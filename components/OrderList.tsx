@@ -1,12 +1,15 @@
 import React from 'react';
 import type { Order } from '../types';
+import PourIcon from './icons/PourIcon';
+import DeliverIcon from './icons/DeliverIcon';
 
 interface OrderListProps {
   orders: Order[];
   onDeleteOrder: (orderId: number) => void;
+  onUpdateStatus: (orderId: number, newStatus: { collected?: boolean; delivered?: boolean }) => void;
 }
 
-const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder }) => {
+const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder, onUpdateStatus }) => {
   if (orders.length === 0) {
     return (
       <div className="text-center p-8 bg-white rounded-lg shadow-lg">
@@ -24,7 +27,18 @@ const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder }) => {
     return acc;
   }, {} as Record<string, number>);
   
-  const sortedOrders = [...orders].sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+  const sortedOrders = [...orders].sort((a, b) => {
+    // Primary sort: undelivered orders first
+    if (a.delivered !== b.delivered) {
+        return a.delivered ? 1 : -1; // delivered (true) items go to the bottom
+    }
+    // Secondary sort: uncollected orders first (among undelivered)
+    if (a.collected !== b.collected) {
+        return a.collected ? 1 : -1; // collected (true) items go to the bottom
+    }
+    // Tertiary sort: newest orders first
+    return b.created_at.getTime() - a.created_at.getTime();
+  });
 
 
   return (
@@ -52,10 +66,12 @@ const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder }) => {
         {sortedOrders.map((order) => (
             <li 
               key={order.id} 
-              className="p-3 rounded-lg flex items-center shadow-sm bg-amber-50"
+              className={`p-3 rounded-lg flex items-center shadow-sm transition-all duration-300 ${
+                order.delivered ? 'bg-green-100 opacity-60' : order.collected ? 'bg-blue-100' : 'bg-amber-50'
+              }`}
             >
               <div className="flex-grow">
-                <p className="font-bold text-lg text-amber-900">{order.customerName}</p>
+                <p className={`font-bold text-lg text-amber-900 ${order.delivered ? 'line-through' : ''}`}>{order.customerName}</p>
                 <p className="text-sm text-gray-600">{order.locations.name} - <span className="font-semibold">{order.products.name}</span></p>
                 <p className="text-xs text-gray-500 mt-1">
                   {order.created_at.toLocaleString('nl-NL', {
@@ -65,6 +81,22 @@ const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder }) => {
               </div>
               
               <div className="flex items-center space-x-2 ml-4">
+                 <button 
+                    onClick={() => onUpdateStatus(order.id, { collected: !order.collected })}
+                    className={`p-2 rounded-full transition-colors ${order.collected ? 'bg-blue-500 text-white' : 'text-gray-400 hover:bg-blue-100 hover:text-blue-600'}`}
+                    aria-label={order.collected ? 'Markeer als niet opgehaald' : 'Markeer als opgehaald'}
+                    aria-pressed={order.collected}
+                >
+                    <PourIcon className="h-6 w-6" />
+                </button>
+                <button 
+                    onClick={() => onUpdateStatus(order.id, { delivered: !order.delivered })}
+                    className={`p-2 rounded-full transition-colors ${order.delivered ? 'bg-green-500 text-white' : 'text-gray-400 hover:bg-green-100 hover:text-green-600'}`}
+                    aria-label={order.delivered ? 'Markeer als niet bezorgd' : 'Markeer als bezorgd'}
+                    aria-pressed={order.delivered}
+                >
+                    <DeliverIcon className="h-6 w-6" />
+                </button>
                 <button 
                     onClick={() => onDeleteOrder(order.id)} 
                     className="p-2 text-red-500 hover:text-red-700 rounded-full hover:bg-red-100 transition-colors"

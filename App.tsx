@@ -154,6 +154,8 @@ const App: React.FC = () => {
                   created_at: new Date(newOrderData.created_at),
                   products: product,
                   locations: location,
+                  collected: newOrderData.collected,
+                  delivered: newOrderData.delivered,
               };
               setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)].sort((a,b) => b.created_at.getTime() - a.created_at.getTime()));
             } else {
@@ -170,6 +172,8 @@ const App: React.FC = () => {
                     created_at: new Date(updatedOrderData.created_at),
                     products: product,
                     locations: location,
+                    collected: updatedOrderData.collected,
+                    delivered: updatedOrderData.delivered,
                 };
                 setOrders(prev => prev.map(order => (order.id === updatedOrder.id ? updatedOrder : order)));
              }
@@ -214,6 +218,16 @@ const App: React.FC = () => {
     const { error } = await supabase.from('kwartvoorbier').delete().eq('id', orderId);
     if (error) {
         console.error('Error deleting order:', error.message);
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId: number, newStatus: { collected?: boolean; delivered?: boolean; }) => {
+    const { error } = await supabase
+        .from('kwartvoorbier')
+        .update(newStatus)
+        .eq('id', orderId);
+    if (error) {
+        console.error('Error updating order status:', error.message);
     }
   };
 
@@ -325,7 +339,7 @@ const App: React.FC = () => {
     }
 
     if (viewMode === ViewMode.PICKUP) {
-      return <OrderList orders={orders} onDeleteOrder={handleDeleteOrder} />;
+      return <OrderList orders={orders} onDeleteOrder={handleDeleteOrder} onUpdateStatus={handleUpdateOrderStatus} />;
     }
     
     if (viewMode === ViewMode.ADMIN) {

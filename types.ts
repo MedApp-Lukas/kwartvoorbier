@@ -29,4 +29,6 @@ export type Order = {
   created_at: Date;
   products: Product;
   locations: Location;
+  collected: boolean;
+  delivered: boolean;
 };
