@@ -1,0 +1,5 @@
+{
+  "name": "kwartvoorbi.er",
+  "description": "An application to order drinks on Thursdays and Fridays between 15:45 and 16:00. Features a beer-filling countdown timer.",
+  "requestFramePermissions": []
+}

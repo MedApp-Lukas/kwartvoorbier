@@ -1,0 +1,86 @@
+import React from 'react';
+import type { Order } from '../types';
+
+interface OrderListProps {
+  orders: Order[];
+  onDeleteOrder: (orderId: number) => void;
+}
+
+const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder }) => {
+  if (orders.length === 0) {
+    return (
+      <div className="text-center p-8 bg-white rounded-lg shadow-lg">
+        <h2 className="text-2xl font-semibold text-amber-800 mb-2">Geen bestellingen</h2>
+        <p className="text-gray-600">Er zijn op dit moment geen bestellingen geplaatst.</p>
+        <div className="text-6xl mt-6">📝</div>
+      </div>
+    );
+  }
+
+  const totalOrders = orders.length;
+  const drinkCounts = orders.reduce((acc, order) => {
+    const drinkName = order.products.name;
+    acc[drinkName] = (acc[drinkName] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  const sortedOrders = [...orders].sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+
+
+  return (
+    <div className="p-8 bg-white rounded-lg shadow-lg w-full max-w-2xl">
+      <h2 className="text-2xl font-bold text-amber-900 mb-6 text-center">Bestellijst</h2>
+
+      <div className="mb-6 p-4 bg-amber-100 rounded-lg border border-amber-200">
+        <h3 className="text-lg font-semibold text-amber-800 mb-2">Overzicht</h3>
+        <p className="text-sm text-gray-700 mb-3">
+          Totaal aantal bestellingen: <span className="font-bold">{totalOrders}</span>
+        </p>
+        <ul className="space-y-1 text-sm">
+          {Object.entries(drinkCounts)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([drinkName, count]) => (
+            <li key={drinkName} className="flex justify-between text-gray-800">
+              <span>{drinkName}:</span>
+              <span className="font-semibold">{count}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <ul className="space-y-3">
+        {sortedOrders.map((order) => (
+            <li 
+              key={order.id} 
+              className="p-3 rounded-lg flex items-center shadow-sm bg-amber-50"
+            >
+              <div className="flex-grow">
+                <p className="font-bold text-lg text-amber-900">{order.customerName}</p>
+                <p className="text-sm text-gray-600">{order.locations.name} - <span className="font-semibold">{order.products.name}</span></p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {order.created_at.toLocaleString('nl-NL', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                  })}
+                </p>
+              </div>
+              
+              <div className="flex items-center space-x-2 ml-4">
+                <button 
+                    onClick={() => onDeleteOrder(order.id)} 
+                    className="p-2 text-red-500 hover:text-red-700 rounded-full hover:bg-red-100 transition-colors"
+                    aria-label={`Verwijder bestelling van ${order.customerName}`}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+              </div>
+            </li>
+          )
+        )}
+      </ul>
+    </div>
+  );
+};
+
+export default OrderList;
