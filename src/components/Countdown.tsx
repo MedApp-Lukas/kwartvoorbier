@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 
 interface CountdownProps {
@@ -57,7 +56,7 @@ const BeerGlassIcon: React.FC<{ fillPercentage: number }> = ({ fillPercentage })
 const Countdown: React.FC<CountdownProps> = ({ targetDate, onComplete }) => {
   const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
   const [fillPercentage, setFillPercentage] = useState(0);
-  const [initialTime] = useState(new Date().getTime());
+  const [initialTime] = useState(new Date().setHours(9, 0, 0, 0)); 
 
   useEffect(() => {
     const totalDuration = targetDate.getTime() - initialTime;

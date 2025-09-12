@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import type { Product, Location } from '../types';
+import type { Product, Location } from '../../types';
 
 interface OrderFormProps {
   products: Product[];
@@ -65,7 +65,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ products, locations, onOrderSubmi
   }
 
   return (
-    <div className="p-8 bg-white rounded-lg shadow-lg w-full max-w-md">
+    <div className="p-8 bg-white rounded-lg shadow-lg w-full max-w-md mx-auto">
       <h2 className="text-2xl font-bold text-amber-900 mb-6 text-center">Plaats je bestelling</h2>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
