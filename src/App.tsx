@@ -97,8 +97,18 @@ const App: React.FC = () => {
       setError(null);
 
       try {
+        const now = new Date();
+        const isThursday = now.getDay() === 4; // 4 = Donderdag;
+
+        let productsQuery = supabase.from('products').select('*');
+
+        if (isThursday){
+          productsQuery = supabase.from('products').select('*').eq('id', 2);
+          }
+
+
         const [productsRes, locationsRes, ordersRes] = await Promise.all([
-            supabase.from('products').select('*'),
+            productsQuery,
             supabase.from('locations').select('*'),
             supabase.from('kwartvoorbier').select('*, products(*), locations(*)').order('created_at', { ascending: false })
         ]);
@@ -350,7 +360,7 @@ const App: React.FC = () => {
       return <OrderList orders={orders} onDeleteOrder={handleDeleteOrder} onUpdateStatus={handleUpdateOrderStatus} />;
     }
     
-    if (viewMode === ViewMode.ADMIN) {
+    if (viewMode === ViewMode.ADMIN && appState != AppState.ORDERING) {
         return <AdminPage 
             products={products} 
             locations={locations}
@@ -416,14 +426,18 @@ const App: React.FC = () => {
                 >
                   Bier Halen
                 </button>
-                <button 
-                  onClick={() => setViewMode(ViewMode.ADMIN)}
-                  className={`w-1/3 py-2 px-4 rounded-md font-medium transition-colors ${viewMode === ViewMode.ADMIN ? 'bg-white shadow text-amber-800' : 'text-amber-700 hover:bg-amber-100'}`}
-                  aria-selected={viewMode === ViewMode.ADMIN}
-                  role="tab"
-                >
-                  Beheer
-                </button>
+
+                {appState !== AppState.ORDERING && (
+                  <button 
+                    onClick={() => setViewMode(ViewMode.ADMIN)}
+                    className={`w-1/3 py-2 px-4 rounded-md font-medium transition-colors ${viewMode === ViewMode.ADMIN ? 'bg-white shadow text-amber-800' : 'text-amber-700 hover:bg-amber-100'}`}
+                    aria-selected={viewMode === ViewMode.ADMIN}
+                    role="tab"
+                  >
+                    Beheer
+                  </button>
+                )}
+
             </div>
 
             <main>
