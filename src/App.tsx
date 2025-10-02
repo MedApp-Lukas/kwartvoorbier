@@ -103,7 +103,7 @@ const App: React.FC = () => {
         let productsQuery = supabase.from('products').select('*');
 
         if (isThursday){
-          productsQuery = supabase.from('products').select('*').eq('id', 2);
+          productsQuery = supabase.from('products').select('*').like('name', "%Bier%");
           }
 
 
