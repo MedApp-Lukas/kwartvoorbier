@@ -96,12 +96,22 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkTime = () => {
-      const now = new Date();
-      const day = now.getDay();
-      if (day !== 4 && day !== 5) {
+      if (products.length === 0 && !loading) {
         setAppState(AppState.CLOSED);
         setMessage('Helaas, geen borrel vandaag.');
-        setSubMessage('Kom terug op donderdag of vrijdag!');
+        setSubMessage('Kom een andere keer terug!');
+        return;
+      }
+
+      const now = new Date();
+      const currentDay = now.getDay();
+      
+      const isAnythingAvailableToday = products.some(p => p.available_on_days?.includes(currentDay));
+
+      if (!isAnythingAvailableToday) {
+        setAppState(AppState.CLOSED);
+        setMessage('Helaas, geen borrel vandaag.');
+        setSubMessage('Kom een andere keer terug!');
         return;
       }
 
@@ -125,26 +135,20 @@ const App: React.FC = () => {
     checkTime();
     const interval = setInterval(checkTime, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [products, loading]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
-      if (!user) { // Don't fetch if not logged in
+      if (!user) {
         setLoading(false);
         return;
       }
       setLoading(true);
       setError(null);
       try {
-        const now = new Date();
-        const isThursday = now.getDay() === 4;
-        const productsQuery = isThursday 
-            ? supabase.from('products').select('*').like('name', "%Bier%")
-            : supabase.from('products').select('*');
-
         const [productsRes, locationsRes, ordersRes] = await Promise.all([
-            productsQuery,
-            supabase.from('locations').select('*'),
+            supabase.from('products').select('*').order('position', { ascending: true }),
+            supabase.from('locations').select('*').order('position', { ascending: true }),
             supabase.from('kwartvoorbier').select('*, products(*), locations(*)').order('created_at', { ascending: false })
         ]);
 
@@ -213,14 +217,12 @@ const App: React.FC = () => {
   // --- Handlers ---
   const handleCountdownComplete = () => { setShowProost(true); setTimeout(() => { setShowProost(false); setAppState(AppState.ORDERING); }, 2500); };
   
-  // AANGEPAST: De functie gebruikt nu de 'full_name' van het profiel
   const handleAddOrder = async (orderData: { locationId: number; productId: number; }) => {
     if (!userProfile) {
         setError("Kan bestelling niet plaatsen: profiel niet geladen.");
         return;
     }
     const { locationId, productId } = orderData;
-    // Gebruik de volledige naam, met email als fallback
     const customerName = userProfile.full_name || userProfile.email || 'Onbekende Gebruiker';
 
     await supabase.from('kwartvoorbier').insert({ customerName, location: locationId, productOrdered: productId });
@@ -228,13 +230,51 @@ const App: React.FC = () => {
   
   const handleDeleteOrder = async (orderId: number) => { await supabase.from('kwartvoorbier').delete().eq('id', orderId); };
   const handleUpdateOrderStatus = async (orderId: number, newStatus: { collected?: boolean; delivered?: boolean; }) => { await supabase.from('kwartvoorbier').update(newStatus).eq('id', orderId); };
-  const handleAddProduct = async (name: string): Promise<boolean> => { const { data } = await supabase.from('products').insert({ name }).select().single(); if(data) setProducts(p => [...p, data]); return !!data; };
-  const handleUpdateProduct = async (id: number, name: string): Promise<boolean> => { const { data } = await supabase.from('products').update({ name }).eq('id', id).select().single(); if(data) setProducts(p => p.map(i => i.id === id ? data : i)); return !!data; };
+  
+  const handleAddProduct = async (productData: { name: string; available_on_days: number[] }): Promise<boolean> => {
+    const newPosition = products.length > 0 ? Math.max(...products.map(p => p.position ?? 0)) + 1 : 0;
+    const { data } = await supabase.from('products').insert({ ...productData, position: newPosition }).select().single();
+    if (data) setProducts(p => [...p, data]);
+    return !!data;
+  };
+  const handleUpdateProduct = async (id: number, productData: { name: string; available_on_days: number[] }): Promise<boolean> => {
+    const { data } = await supabase.from('products').update(productData).eq('id', id).select().single();
+    if(data) setProducts(p => p.map(i => i.id === id ? data : i));
+    return !!data;
+  };
   const handleDeleteProduct = async (id: number): Promise<boolean> => { const { error } = await supabase.from('products').delete().eq('id', id); if(!error) setProducts(p => p.filter(i => i.id !== id)); return !error; };
-  const handleAddLocation = async (loc: Omit<Location, 'id'>): Promise<boolean> => { const { data } = await supabase.from('locations').insert(loc).select().single(); if(data) setLocations(l => [...l, data]); return !!data; };
+  
+  const handleAddLocation = async (loc: Omit<Location, 'id'>): Promise<boolean> => { 
+    const newPosition = locations.length > 0 ? Math.max(...locations.map(l => l.position ?? 0)) + 1 : 0;
+    const { data } = await supabase.from('locations').insert({ ...loc, position: newPosition }).select().single(); 
+    if(data) setLocations(l => [...l, data]); 
+    return !!data; 
+  };
   const handleUpdateLocation = async (id: number, loc: Omit<Location, 'id'>): Promise<boolean> => { const { data } = await supabase.from('locations').update(loc).eq('id', id).select().single(); if(data) setLocations(l => l.map(i => i.id === id ? data : i)); return !!data; };
   const handleDeleteLocation = async (id: number): Promise<boolean> => { const { error } = await supabase.from('locations').delete().eq('id', id); if(!error) setLocations(l => l.filter(i => i.id !== id)); return !error; };
   
+  const handleUpdateProductOrder = async (newOrder: Product[]) => {
+    setProducts(newOrder);
+    const updates = newOrder.map((product, index) => supabase.from('products').update({ position: index }).eq('id', product.id));
+    const results = await Promise.all(updates);
+    const failed = results.find(res => res.error);
+    if (failed) {
+        console.error("Fout bij bijwerken productvolgorde:", failed.error);
+        setError("Kon de volgorde van producten niet opslaan.");
+    }
+  };
+
+  const handleUpdateLocationOrder = async (newOrder: Location[]) => {
+    setLocations(newOrder);
+    const updates = newOrder.map((location, index) => supabase.from('locations').update({ position: index }).eq('id', location.id));
+    const results = await Promise.all(updates);
+    const failed = results.find(res => res.error);
+    if (failed) {
+        console.error("Fout bij bijwerken locatievolgorde:", failed.error);
+        setError("Kon de volgorde van locaties niet opslaan.");
+    }
+  };
+
   const handleUpdateUserRole = async (userId: string, newRole: string): Promise<boolean> => {
     const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
     if (error) {
@@ -245,13 +285,24 @@ const App: React.FC = () => {
     return true;
   };
 
+  const handleDeleteUsers = async (userIds: string[]): Promise<boolean> => {
+      if (userIds.length === 0) return true;
+      const { error } = await supabase.functions.invoke('delete-user', { body: { userIds } });
+      if (error) {
+        console.error("Fout bij verwijderen van meerdere gebruikers:", error);
+        setError("Kon gebruikers niet verwijderen: " + error.message);
+        return false;
+      }
+      setAllUsers(prev => prev.filter(u => !userIds.includes(u.id)));
+      return true;
+  };
+
   const renderMainContent = () => {
-    // We checken nu op userProfile, niet alleen loading
     if (loading || (user && !userProfile && !error) ) return <div className="text-center p-8"><h2 className="text-2xl font-semibold text-amber-800 animate-pulse">Gegevens laden...</h2></div>;
     if (error) return <div className="text-center p-8 bg-red-50 border-2 border-red-200 rounded-lg"><h2 className="text-2xl font-semibold text-red-700">Oeps!</h2><pre className="mt-2 text-left bg-red-100 p-2 rounded">{error}</pre></div>;
 
     if (viewMode === ViewMode.PICKUP) {
-      return <OrderList orders={orders} onDeleteOrder={handleDeleteOrder} onUpdateStatus={handleUpdateOrderStatus} />;
+      return <OrderList orders={orders} locations={locations} onDeleteOrder={handleDeleteOrder} onUpdateStatus={handleUpdateOrderStatus} />;
     }
     
     if (viewMode === ViewMode.ADMIN) {
@@ -261,12 +312,15 @@ const App: React.FC = () => {
                 locations={locations}
                 allUsers={allUsers}
                 onUpdateUserRole={handleUpdateUserRole}
+                onDeleteUsers={handleDeleteUsers}
                 onAddProduct={handleAddProduct}
                 onUpdateProduct={handleUpdateProduct}
                 onDeleteProduct={handleDeleteProduct}
                 onAddLocation={handleAddLocation}
                 onUpdateLocation={handleUpdateLocation}
                 onDeleteLocation={handleDeleteLocation}
+                onUpdateProductOrder={handleUpdateProductOrder}
+                onUpdateLocationOrder={handleUpdateLocationOrder}
             />;
         }
         return <div className="text-center p-8 bg-white rounded-lg shadow-lg"><h2 className="text-2xl font-semibold">Toegang geweigerd</h2><p>Je moet een beheerder zijn.</p><div className="text-6xl mt-6">🔒</div></div>;
@@ -276,9 +330,19 @@ const App: React.FC = () => {
       
     switch (appState) {
       case AppState.COUNTDOWN: return <Countdown targetDate={targetDate} onComplete={handleCountdownComplete} />;
-      case AppState.ORDERING:
-        if (products.length === 0 || locations.length === 0) return <div className="text-center p-8"><h2 className="text-2xl font-semibold">Bestellen niet mogelijk</h2><p>Geen producten of locaties beschikbaar.</p></div>;
-        return <OrderForm products={products} locations={locations} onOrderSubmit={handleAddOrder} />;
+      
+      case AppState.ORDERING: {
+          const currentDay = new Date().getDay();
+          const availableProducts = products.filter(p => 
+              p.available_on_days && p.available_on_days.includes(currentDay)
+          );
+
+          if (availableProducts.length === 0 || locations.length === 0) {
+              return <div className="text-center p-8"><h2 className="text-2xl font-semibold">Bestellen niet mogelijk</h2><p>Geen producten beschikbaar voor vandaag.</p></div>;
+          }
+
+          return <OrderForm products={availableProducts} locations={locations} onOrderSubmit={handleAddOrder} />;
+      }
       case AppState.CLOSED:
       default:
         return <ClosedMessage message={message} subMessage={subMessage} />;
@@ -286,12 +350,14 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-amber-50 flex flex-col items-center justify-center p-4">
+    // AANGEPAST: Conditionele verticale uitlijning voor een stabiele layout
+    <div className={`min-h-screen bg-amber-50 flex flex-col items-center p-4 ${user ? 'justify-start pt-8' : 'justify-center'}`}>
         <div className="w-full max-w-2xl mx-auto">
             <Header />
-            <Auth />
+            <div className="flex justify-center my-4">
+              <Auth />
+            </div>
 
-            {/* AANGEPAST: Toon de rest van de app alleen als je bent ingelogd */}
             {user && (
               <>
                 <div className="flex justify-center rounded-lg bg-purple-900 p-1 my-6" role="tablist">
@@ -302,7 +368,6 @@ const App: React.FC = () => {
                       <button onClick={() => setViewMode(ViewMode.ADMIN)} className={`w-1/3 py-2 px-4 rounded-md font-medium transition-colors ${viewMode === ViewMode.ADMIN ? 'bg-white shadow text-black' : 'text-white hover:bg-purple-700'}`}>Beheer</button>
                     )}
                 </div>
-
                 <main>
                     {renderMainContent()}
                 </main>
@@ -314,4 +379,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

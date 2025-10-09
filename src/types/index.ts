@@ -11,10 +11,12 @@ export enum ViewMode {
   ADMIN = 'ADMIN',
 }
 
-export type Product = {
+export interface Product {
   id: number;
   name: string;
-};
+  available_on_days: number[] | null; // Voeg deze regel toe
+  order_index: number; 
+}
 
 export type Location = {
   id: number;

@@ -1,15 +1,20 @@
-import React from 'react';
-import type { Order } from '../../types';
+import React, { useState } from 'react';
+import type { Order, Location } from '../../types';
 import PourIcon from '../../components/icons/PourIcon';
 import DeliverIcon from '../../components/icons/DeliverIcon';
 
 interface OrderListProps {
   orders: Order[];
+  // TOEGEVOEGD: locations prop is nodig voor de filter dropdown
+  locations: Location[];
   onDeleteOrder: (orderId: number) => void;
   onUpdateStatus: (orderId: number, newStatus: { collected?: boolean; delivered?: boolean }) => void;
 }
 
-const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder, onUpdateStatus }) => {
+const OrderList: React.FC<OrderListProps> = ({ orders, locations, onDeleteOrder, onUpdateStatus }) => {
+  // TOEGEVOEGD: State voor het bijhouden van de geselecteerde locatie-filter
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('');
+
   if (orders.length === 0) {
     return (
       <div className="text-center p-8 bg-white rounded-lg shadow-lg">
@@ -20,14 +25,19 @@ const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder, onUpdateSt
     );
   }
 
-  const totalOrders = orders.length;
-  const drinkCounts = orders.reduce((acc, order) => {
+  // AANGEPAST: Filter de orders op basis van de geselecteerde locatie
+  const filteredOrders = selectedLocationId
+    ? orders.filter(order => String(order.locations.id) === selectedLocationId)
+    : orders;
+
+  const totalOrders = filteredOrders.length;
+  const drinkCounts = filteredOrders.reduce((acc, order) => {
     const drinkName = order.products.name;
     acc[drinkName] = (acc[drinkName] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
   
-  const sortedOrders = [...orders].sort((a, b) => {
+  const sortedOrders = [...filteredOrders].sort((a, b) => {
     // Primary sort: undelivered orders first
     if (a.delivered !== b.delivered) {
         return a.delivered ? 1 : -1; // delivered (true) items go to the bottom
@@ -43,10 +53,31 @@ const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder, onUpdateSt
 
   return (
     <div className="p-8 bg-white rounded-lg shadow-lg w-full max-w-2xl">
-      <h2 className="text-2xl font-bold text-amber-900 mb-6 text-center">Bestellijst</h2>
+      <h2 className="text-2xl font-bold text-amber-900 mb-4 text-center">Bestellijst</h2>
+
+      {/* TOEGEVOEGD: Filter dropdown voor locaties */}
+      <div className="mb-6">
+        <label htmlFor="location-filter" className="block text-sm font-medium text-gray-700">
+          Filter op kantoor
+        </label>
+        <select
+          id="location-filter"
+          value={selectedLocationId}
+          onChange={(e) => setSelectedLocationId(e.target.value)}
+          className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm rounded-md"
+        >
+          <option value="">Alle locaties</option>
+          {locations.map((loc) => (
+            <option key={loc.id} value={loc.id}>
+              {loc.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
 
       <div className="mb-6 p-4 bg-purple-100 rounded-lg border border-purple-200">
-        <h3 className="text-lg font-semibold text-amber-800 mb-2">Overzicht</h3>
+        <h3 className="text-lg font-semibold text-amber-800 mb-2">Overzicht {selectedLocationId ? `(${locations.find(l => String(l.id) === selectedLocationId)?.name})` : ''}</h3>
         <p className="text-sm text-gray-700 mb-3">
           Totaal aantal bestellingen: <span className="font-bold">{totalOrders}</span>
         </p>
