@@ -1,46 +1,47 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Product, Location } from '../../types';
 
 interface OrderFormProps {
   products: Product[];
   locations: Location[];
-  onOrderSubmit: (order: { name: string; locationId: number; productId: number; }) => void;
+  // AANGEPAST: 'name' is niet langer nodig in de prop
+  onOrderSubmit: (order: { locationId: number; productId: number; }) => void;
 }
 
 const OrderForm: React.FC<OrderFormProps> = ({ products, locations, onOrderSubmit }) => {
-  const [name, setName] = useState('');
+  // VERWIJDERD: De 'name' state is niet meer nodig
+  // const [name, setName] = useState('');
   const [locationId, setLocationId] = useState<string>('');
   const [productId, setProductId] = useState<string>('');
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   useEffect(() => {
-    if (locations.length > 0) {
+    if (locations.length > 0 && !locationId) {
       setLocationId(String(locations[0].id));
     }
-    if (products.length > 0) {
+    if (products.length > 0 && !productId) {
       setProductId(String(products[0].id));
     }
-  }, [products, locations]);
+  }, [products, locations, locationId, productId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (name && locationId && productId) {
-      onOrderSubmit({ name, locationId: Number(locationId), productId: Number(productId) });
+    // AANGEPAST: 'name' wordt niet meer meegegeven
+    if (locationId && productId) {
+      onOrderSubmit({ locationId: Number(locationId), productId: Number(productId) });
       setIsSubmitted(true);
     }
   };
 
   const handleNewOrderClick = () => {
-    // Reset all form fields to their initial state
-    setName('');
+    // VERWIJDERD: 'name' hoeft niet gereset te worden
+    // setName('');
     if (locations.length > 0) {
       setLocationId(String(locations[0].id));
     }
     if (products.length > 0) {
       setProductId(String(products[0].id));
     }
-    // Hide the success message and show the form again
     setIsSubmitted(false);
   };
 
@@ -50,8 +51,9 @@ const OrderForm: React.FC<OrderFormProps> = ({ products, locations, onOrderSubmi
     return (
       <div className="text-center p-8 bg-white rounded-lg shadow-lg">
         <h2 className="text-3xl font-bold text-green-600 mb-4">Bestelling geplaatst!</h2>
+        {/* AANGEPAST: Het bericht toont geen naam meer */}
         <p className="text-gray-700 text-lg">
-          Je <span className="font-semibold">{orderedProduct?.name}</span> is onderweg naar <span className="font-semibold">{orderLocation?.name}</span>, {name}.
+          Je <span className="font-semibold">{orderedProduct?.name}</span> is onderweg naar <span className="font-semibold">{orderLocation?.name}</span>.
         </p>
         <p className="text-5xl mt-6">🍻</p>
          <button
@@ -68,17 +70,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ products, locations, onOrderSubmi
     <div className="p-8 bg-white rounded-lg shadow-lg w-full max-w-md mx-auto">
       <h2 className="text-2xl font-bold text-amber-900 mb-6 text-center">Plaats je bestelling</h2>
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700">Naam</label>
-          <input
-            type="text"
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm"
-          />
-        </div>
+        {/* VERWIJDERD: Het hele 'naam' invoerveld is weggehaald */}
         <div>
           <label htmlFor="location" className="block text-sm font-medium text-gray-700">Welk kantoor zit je?</label>
           <select
@@ -120,7 +112,8 @@ const OrderForm: React.FC<OrderFormProps> = ({ products, locations, onOrderSubmi
         <button
           type="submit"
           className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:bg-gray-400 transition-colors"
-          disabled={!name || !locationId || !productId}
+          // AANGEPAST: De check voor 'name' is verwijderd
+          disabled={!locationId || !productId}
         >
           Bestellen
         </button>

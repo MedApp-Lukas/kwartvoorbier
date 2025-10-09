@@ -45,7 +45,7 @@ const OrderList: React.FC<OrderListProps> = ({ orders, onDeleteOrder, onUpdateSt
     <div className="p-8 bg-white rounded-lg shadow-lg w-full max-w-2xl">
       <h2 className="text-2xl font-bold text-amber-900 mb-6 text-center">Bestellijst</h2>
 
-      <div className="mb-6 p-4 bg-amber-100 rounded-lg border border-amber-200">
+      <div className="mb-6 p-4 bg-purple-100 rounded-lg border border-purple-200">
         <h3 className="text-lg font-semibold text-amber-800 mb-2">Overzicht</h3>
         <p className="text-sm text-gray-700 mb-3">
           Totaal aantal bestellingen: <span className="font-bold">{totalOrders}</span>

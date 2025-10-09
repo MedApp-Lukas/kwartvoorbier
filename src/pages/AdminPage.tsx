@@ -1,10 +1,13 @@
+import React, { useState } from 'react';
+// 1. UserProfile type importeren
+import type { Product, Location, UserProfile } from '../types';
 
-import React, { useState, useEffect } from 'react';
-import type { Product, Location } from '../types';
-
+// 2. Props bijwerken met gebruikersbeheer-functionaliteit
 interface AdminPageProps {
   products: Product[];
   locations: Location[];
+  allUsers: UserProfile[]; // NIEUW
+  onUpdateUserRole: (userId: string, newRole: string) => Promise<boolean>; // NIEUW
   onAddProduct: (name: string) => Promise<boolean>;
   onUpdateProduct: (id: number, name: string) => Promise<boolean>;
   onDeleteProduct: (id: number) => Promise<boolean>;
@@ -108,7 +111,8 @@ const EditLocationModal: React.FC<{
 };
 
 const AdminPage: React.FC<AdminPageProps> = (props) => {
-    const { products, locations, onAddProduct, onUpdateProduct, onDeleteProduct, onAddLocation, onUpdateLocation, onDeleteLocation } = props;
+    // 3. Nieuwe props uitpakken
+    const { products, locations, allUsers, onUpdateUserRole, onAddProduct, onUpdateProduct, onDeleteProduct, onAddLocation, onUpdateLocation, onDeleteLocation } = props;
     
     // State for modals
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -122,18 +126,14 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
         e.preventDefault();
         if (!newProductName.trim()) return;
         const success = await onAddProduct(newProductName);
-        if (success) {
-            setNewProductName('');
-        }
+        if (success) setNewProductName('');
     };
 
     const handleAddLocationSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newLocation.name.trim()) return;
         const success = await onAddLocation(newLocation);
-        if (success) {
-            setNewLocation({ name: '', floor: 0, description: ''});
-        }
+        if (success) setNewLocation({ name: '', floor: 0, description: ''});
     };
     
     const handleLocationFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,31 +158,49 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
             {editingProduct && <EditProductModal product={editingProduct} onClose={() => setEditingProduct(null)} onUpdate={onUpdateProduct} />}
             {editingLocation && <EditLocationModal location={editingLocation} onClose={() => setEditingLocation(null)} onUpdate={onUpdateLocation} />}
             
+            {/* 4. Nieuwe sectie voor gebruikersbeheer */}
+            <div>
+                <h2 className="text-2xl font-bold text-amber-900 mb-4 border-b pb-2 border-purple-200">Gebruikersbeheer</h2>
+                {allUsers.length > 0 ? (
+                    <ul className="space-y-2">
+                        {allUsers.map(user => (
+                            <li key={user.id} className="p-3 rounded-lg flex items-center justify-between bg-purple-50">
+                               <span className="text-gray-800 truncate" title={user.email || user.id}>{user.email || user.id}</span>
+                               <div className="flex-shrink-0 ml-4">
+                                   <select
+                                       value={user.role}
+                                       onChange={(e) => onUpdateUserRole(user.id, e.target.value)}
+                                       className="px-3 py-1 bg-white border border-gray-300 rounded-md shadow-sm text-gray-900 focus:outline-none focus:ring-amber-500 focus:border-amber-500"
+                                   >
+                                       <option value="gebruiker">Gebruiker</option>
+                                       <option value="beheerder">Beheerder</option>
+                                   </select>
+                               </div>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div className="text-center p-4 bg-purple-50 rounded-lg">
+                        <p className="text-gray-600">Geen gebruikers gevonden.</p>
+                    </div>
+                )}
+            </div>
+
             {/* Products Section */}
             <div>
-                <h2 className="text-2xl font-bold text-amber-900 mb-4 border-b pb-2 border-amber-200">Productbeheer</h2>
-                
-                {/* Add Product Form */}
+                <h2 className="text-2xl font-bold text-amber-900 mb-4 border-b pb-2 border-purple-200">Productbeheer</h2>
                 <form onSubmit={handleAddProductSubmit} className="flex gap-3 mb-6 items-end">
                     <div className="flex-grow">
                        <label htmlFor="new-product-name" className="block text-sm font-medium text-gray-700">Nieuw Product</label>
-                       <input 
-                           id="new-product-name"
-                           type="text" 
-                           value={newProductName}
-                           onChange={(e) => setNewProductName(e.target.value)}
-                           placeholder="Naam van drankje"
-                           className="mt-1 w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-gray-900 focus:outline-none focus:ring-amber-500 focus:border-amber-500"
-                       />
+                       <input id="new-product-name" type="text" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} placeholder="Naam van drankje" className="mt-1 w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-gray-900 focus:outline-none focus:ring-amber-500 focus:border-amber-500"/>
                     </div>
                     <button type="submit" className="h-10 px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:bg-gray-400">Toevoegen</button>
                 </form>
 
-                {/* Product List */}
                 {products.length > 0 ? (
                     <ul className="space-y-2">
                         {products.map(p => (
-                            <li key={p.id} className="p-3 rounded-lg flex items-center justify-between bg-amber-50">
+                            <li key={p.id} className="p-3 rounded-lg flex items-center justify-between bg-purple-50">
                                <span className="text-gray-800">{p.name}</span>
                                <div className="space-x-2">
                                    <button onClick={() => setEditingProduct(p)} className="text-blue-600 hover:text-blue-800 font-medium">Bewerk</button>
@@ -191,18 +209,12 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                             </li>
                         ))}
                     </ul>
-                ) : (
-                    <div className="text-center p-4 bg-amber-50 rounded-lg">
-                        <p className="text-gray-600">Geen producten gevonden.</p>
-                    </div>
-                )}
+                ) : <div className="text-center p-4 bg-purple-50 rounded-lg"><p className="text-gray-600">Geen producten gevonden.</p></div>}
             </div>
 
             {/* Locations Section */}
             <div>
-                <h2 className="text-2xl font-bold text-amber-900 mb-4 border-b pb-2 border-amber-200">Locatiebeheer</h2>
-                
-                 {/* Add Location Form */}
+                <h2 className="text-2xl font-bold text-amber-900 mb-4 border-b pb-2 border-purple-200">Locatiebeheer</h2>
                 <form onSubmit={handleAddLocationSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 items-end">
                     <div className="md:col-span-2">
                        <label htmlFor="new-loc-name" className="block text-sm font-medium text-gray-700">Naam</label>
@@ -219,11 +231,10 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                     <button type="submit" className="h-10 px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 md:col-start-4">Toevoegen</button>
                 </form>
 
-                {/* Location List */}
                 {locations.length > 0 ? (
                     <ul className="space-y-2">
                         {locations.map(l => (
-                            <li key={l.id} className="p-3 rounded-lg flex items-center justify-between bg-amber-50">
+                            <li key={l.id} className="p-3 rounded-lg flex items-center justify-between bg-purple-50">
                                <div>
                                    <p className="font-semibold text-gray-800">{l.name} <span className="font-normal text-gray-600">(V{l.floor})</span></p>
                                    <p className="text-sm text-gray-500">{l.description}</p>
@@ -235,13 +246,8 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                             </li>
                         ))}
                     </ul>
-                ) : (
-                    <div className="text-center p-4 bg-amber-50 rounded-lg">
-                        <p className="text-gray-600">Geen locaties gevonden.</p>
-                    </div>
-                )}
+                ) : <div className="text-center p-4 bg-amber-50 rounded-lg"><p className="text-gray-600">Geen locaties gevonden.</p></div>}
             </div>
-
         </div>
     );
 };

@@ -32,3 +32,10 @@ export type Order = {
   collected: boolean;
   delivered: boolean;
 };
+
+export type UserProfile = {
+  id: string;
+  email?: string; 
+  full_name?: string; // Naam van de gebruiker (uit Google)
+  role: 'beheerder' | 'gebruiker';
+};
