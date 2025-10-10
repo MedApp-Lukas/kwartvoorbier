@@ -33,6 +33,7 @@ export type Order = {
   locations: Location;
   collected: boolean;
   delivered: boolean;
+  user_id: string;
 };
 
 export type UserProfile = {

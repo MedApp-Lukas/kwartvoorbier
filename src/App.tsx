@@ -149,7 +149,7 @@ const App: React.FC = () => {
         const [productsRes, locationsRes, ordersRes] = await Promise.all([
             supabase.from('products').select('*').order('position', { ascending: true }),
             supabase.from('locations').select('*').order('position', { ascending: true }),
-            supabase.from('kwartvoorbier').select('*, products(*), locations(*)').order('created_at', { ascending: false })
+            supabase.from('kwartvoorbier').select('*, products(*), locations(*), user_id').order('created_at', { ascending: false })
         ]);
 
         const errors = [productsRes.error, locationsRes.error, ordersRes.error].filter(Boolean);
@@ -187,6 +187,7 @@ const App: React.FC = () => {
                   locations: location,
                   collected: newOrderData.collected,
                   delivered: newOrderData.delivered,
+                  user_id: newOrderData.user_id // TOEGEVOEGD
               };
               setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)].sort((a,b) => b.created_at.getTime() - a.created_at.getTime()));
             }
@@ -203,6 +204,7 @@ const App: React.FC = () => {
                     locations: location,
                     collected: updatedOrderData.collected,
                     delivered: updatedOrderData.delivered,
+                    user_id: updatedOrderData.user_id // TOEGEVOEGD
                 };
                 setOrders(prev => prev.map(order => (order.id === updatedOrder.id ? updatedOrder : order)));
              }
@@ -218,14 +220,19 @@ const App: React.FC = () => {
   const handleCountdownComplete = () => { setShowProost(true); setTimeout(() => { setShowProost(false); setAppState(AppState.ORDERING); }, 2500); };
   
   const handleAddOrder = async (orderData: { locationId: number; productId: number; }) => {
-    if (!userProfile) {
+    if (!userProfile || !user) { // Check voor user object ook
         setError("Kan bestelling niet plaatsen: profiel niet geladen.");
         return;
     }
     const { locationId, productId } = orderData;
     const customerName = userProfile.full_name || userProfile.email || 'Onbekende Gebruiker';
 
-    await supabase.from('kwartvoorbier').insert({ customerName, location: locationId, productOrdered: productId });
+    await supabase.from('kwartvoorbier').insert({ 
+        customerName, 
+        location: locationId, 
+        productOrdered: productId,
+        user_id: user.id 
+    });
   };
   
   const handleDeleteOrder = async (orderId: number) => { await supabase.from('kwartvoorbier').delete().eq('id', orderId); };
@@ -302,7 +309,14 @@ const App: React.FC = () => {
     if (error) return <div className="text-center p-8 bg-red-50 border-2 border-red-200 rounded-lg"><h2 className="text-2xl font-semibold text-red-700">Oeps!</h2><pre className="mt-2 text-left bg-red-100 p-2 rounded">{error}</pre></div>;
 
     if (viewMode === ViewMode.PICKUP) {
-      return <OrderList orders={orders} locations={locations} onDeleteOrder={handleDeleteOrder} onUpdateStatus={handleUpdateOrderStatus} />;
+      // AANGEPAST: Geef het userProfile door als 'currentUserProfile'
+      return <OrderList 
+        orders={orders} 
+        locations={locations} 
+        onDeleteOrder={handleDeleteOrder} 
+        onUpdateStatus={handleUpdateOrderStatus}
+        currentUserProfile={userProfile} 
+      />;
     }
     
     if (viewMode === ViewMode.ADMIN) {

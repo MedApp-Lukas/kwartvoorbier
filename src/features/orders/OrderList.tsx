@@ -1,18 +1,17 @@
 import React, { useState } from 'react';
-import type { Order, Location } from '../../types';
+import type { Order, Location, UserProfile } from '../../types';
 import PourIcon from '../../components/icons/PourIcon';
 import DeliverIcon from '../../components/icons/DeliverIcon';
 
 interface OrderListProps {
   orders: Order[];
-  // TOEGEVOEGD: locations prop is nodig voor de filter dropdown
   locations: Location[];
   onDeleteOrder: (orderId: number) => void;
   onUpdateStatus: (orderId: number, newStatus: { collected?: boolean; delivered?: boolean }) => void;
+  currentUserProfile: UserProfile | null;
 }
 
-const OrderList: React.FC<OrderListProps> = ({ orders, locations, onDeleteOrder, onUpdateStatus }) => {
-  // TOEGEVOEGD: State voor het bijhouden van de geselecteerde locatie-filter
+const OrderList: React.FC<OrderListProps> = ({ orders, locations, onDeleteOrder, onUpdateStatus, currentUserProfile }) => {
   const [selectedLocationId, setSelectedLocationId] = useState<string>('');
 
   if (orders.length === 0) {
@@ -25,7 +24,6 @@ const OrderList: React.FC<OrderListProps> = ({ orders, locations, onDeleteOrder,
     );
   }
 
-  // AANGEPAST: Filter de orders op basis van de geselecteerde locatie
   const filteredOrders = selectedLocationId
     ? orders.filter(order => String(order.locations.id) === selectedLocationId)
     : orders;
@@ -38,16 +36,13 @@ const OrderList: React.FC<OrderListProps> = ({ orders, locations, onDeleteOrder,
   }, {} as Record<string, number>);
   
   const sortedOrders = [...filteredOrders].sort((a, b) => {
-    // Primary sort: undelivered orders first
     if (a.delivered !== b.delivered) {
-        return a.delivered ? 1 : -1; // delivered (true) items go to the bottom
+        return a.delivered ? 1 : -1;
     }
-    // Secondary sort: uncollected orders first (among undelivered)
     if (a.collected !== b.collected) {
-        return a.collected ? 1 : -1; // collected (true) items go to the bottom
+        return a.collected ? 1 : -1;
     }
-    // Tertiary sort: newest orders first
-    return b.created_at.getTime() - a.created_at.getTime();
+    return b.created_at.getTime() - b.created_at.getTime();
   });
 
 
@@ -55,7 +50,6 @@ const OrderList: React.FC<OrderListProps> = ({ orders, locations, onDeleteOrder,
     <div className="p-8 bg-white rounded-lg shadow-lg w-full max-w-2xl">
       <h2 className="text-2xl font-bold text-amber-900 mb-4 text-center">Bestellijst</h2>
 
-      {/* TOEGEVOEGD: Filter dropdown voor locaties */}
       <div className="mb-6">
         <label htmlFor="location-filter" className="block text-sm font-medium text-gray-700">
           Filter op kantoor
@@ -94,52 +88,74 @@ const OrderList: React.FC<OrderListProps> = ({ orders, locations, onDeleteOrder,
       </div>
 
       <ul className="space-y-3">
-        {sortedOrders.map((order) => (
-            <li 
-              key={order.id} 
-              className={`p-3 rounded-lg flex items-center shadow-sm transition-all duration-300 ${
-                order.delivered ? 'bg-green-100 opacity-60' : order.collected ? 'bg-blue-100' : 'bg-amber-50'
-              }`}
-            >
-              <div className="flex-grow">
-                <p className={`font-bold text-lg text-amber-900 ${order.delivered ? 'line-through' : ''}`}>{order.customerName}</p>
-                <p className="text-sm text-gray-600">{order.locations.name} - <span className="font-semibold">{order.products.name}</span></p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {order.created_at.toLocaleString('nl-NL', {
-                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                  })}
-                </p>
-              </div>
-              
-              <div className="flex items-center space-x-2 ml-4">
-                 <button 
-                    onClick={() => onUpdateStatus(order.id, { collected: !order.collected })}
-                    className={`p-2 rounded-full transition-colors ${order.collected ? 'bg-blue-500 text-white' : 'text-gray-400 hover:bg-blue-100 hover:text-blue-600'}`}
-                    aria-label={order.collected ? 'Markeer als niet opgehaald' : 'Markeer als opgehaald'}
-                    aria-pressed={order.collected}
+        {sortedOrders.map((order) => {
+            const isOwner = currentUserProfile?.id === order.user_id;
+            const isAdmin = currentUserProfile?.role === 'beheerder';
+            
+            // AANGEPAST: De logica is nu gesplitst voor admin en eigenaar
+            const handleDeleteClick = () => {
+                if (isAdmin) {
+                    // Admin verwijdert direct, zonder pop-up
+                    onDeleteOrder(order.id);
+                } else if (isOwner) {
+                    // Eigenaar krijgt wel een bevestiging
+                    if (window.confirm(`Weet je zeker dat je jouw bestelling wilt verwijderen?`)) {
+                        onDeleteOrder(order.id);
+                    }
+                } else {
+                    // De grap voor alle anderen
+                    alert('Haha, grapjas! Leuk geprobeerd, maar je kunt alleen je eigen drankje verwijderen. 😉');
+                }
+            };
+
+            return (
+                <li 
+                  key={order.id} 
+                  className={`p-3 rounded-lg flex items-center shadow-sm transition-all duration-300 ${
+                    order.delivered ? 'bg-green-100 opacity-60' : order.collected ? 'bg-blue-100' : 'bg-amber-50'
+                  }`}
                 >
-                    <PourIcon className="h-6 w-6" />
-                </button>
-                <button 
-                    onClick={() => onUpdateStatus(order.id, { delivered: !order.delivered })}
-                    className={`p-2 rounded-full transition-colors ${order.delivered ? 'bg-green-500 text-white' : 'text-gray-400 hover:bg-green-100 hover:text-green-600'}`}
-                    aria-label={order.delivered ? 'Markeer als niet bezorgd' : 'Markeer als bezorgd'}
-                    aria-pressed={order.delivered}
-                >
-                    <DeliverIcon className="h-6 w-6" />
-                </button>
-                <button 
-                    onClick={() => onDeleteOrder(order.id)} 
-                    className="p-2 text-red-500 hover:text-red-700 rounded-full hover:bg-red-100 transition-colors"
-                    aria-label={`Verwijder bestelling van ${order.customerName}`}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                </button>
-              </div>
-            </li>
-          )
+                  <div className="flex-grow">
+                    <p className={`font-bold text-lg text-amber-900 ${order.delivered ? 'line-through' : ''}`}>{order.customerName}</p>
+                    <p className="text-sm text-gray-600">{order.locations.name} - <span className="font-semibold">{order.products.name}</span></p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {order.created_at.toLocaleString('nl-NL', {
+                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2 ml-4">
+                     <button 
+                        onClick={() => onUpdateStatus(order.id, { collected: !order.collected })}
+                        className={`p-2 rounded-full transition-colors ${order.collected ? 'bg-blue-500 text-white' : 'text-gray-400 hover:bg-blue-100 hover:text-blue-600'}`}
+                        aria-label={order.collected ? 'Markeer als niet opgehaald' : 'Markeer als opgehaald'}
+                        aria-pressed={order.collected}
+                    >
+                        <PourIcon className="h-6 w-6" />
+                    </button>
+                    <button 
+                        onClick={() => onUpdateStatus(order.id, { delivered: !order.delivered })}
+                        className={`p-2 rounded-full transition-colors ${order.delivered ? 'bg-green-500 text-white' : 'text-gray-400 hover:bg-green-100 hover:text-green-600'}`}
+                        aria-label={order.delivered ? 'Markeer als niet bezorgd' : 'Markeer als bezorgd'}
+                        aria-pressed={order.delivered}
+                    >
+                        <DeliverIcon className="h-6 w-6" />
+                    </button>
+
+                    <button 
+                        onClick={handleDeleteClick} 
+                        className="p-2 text-red-500 hover:text-red-700 rounded-full hover:bg-red-100 transition-colors"
+                        aria-label={`Verwijder bestelling van ${order.customerName}`}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
+                  </div>
+                </li>
+            );
+          }
         )}
       </ul>
     </div>
