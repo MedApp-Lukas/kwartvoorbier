@@ -2,6 +2,7 @@
 export enum AppState {
   COUNTDOWN,
   ORDERING,
+  ROULETTE,
   CLOSED,
 }
 

@@ -12,6 +12,7 @@ import Auth from './components/Auth';
 import OrderForm from './features/orders/OrderForm';
 import ClosedMessage from './features/orders/ClosedMessage';
 import OrderList from './features/orders/OrderList';
+import RouletteWheel from './features/orders/RouletteWheel';
 
 // Page Components
 import AdminPage from './pages/AdminPage';
@@ -19,7 +20,6 @@ import AdminPage from './pages/AdminPage';
 // Types & Constants
 import { AppState, ViewMode } from './types/index';
 import type { Order, Product, Location, UserProfile } from './types/index';
-import { ORDER_START_HOUR, ORDER_START_MINUTE, ORDER_END_HOUR, ORDER_END_MINUTE } from './constants/index';
 
 // Helper
 const getErrorMessage = (error: unknown): string => {
@@ -45,29 +45,22 @@ const App: React.FC = () => {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [appSettings, setAppSettings] = useState<{ [key: string]: number }>({});
 
-  // Effect om profiel van ingelogde gebruiker te laden
   useEffect(() => {
     const fetchUserProfile = async () => {
       setError(null);
       if (user) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id);
-
+        const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id);
         if (error) {
           console.error("Error fetching user profile:", error);
           setError("Kon gebruikersprofiel niet laden: " + error.message);
           return;
         }
-
         if (data && data.length > 0) {
           setUserProfile(data[0]);
         } else {
-          setTimeout(() => {
-             console.warn("Profiel niet gevonden voor gebruiker, controleer de database trigger.", user.id);
-          }, 1500);
+          setTimeout(() => { console.warn("Profiel niet gevonden voor gebruiker, controleer de database trigger.", user.id); }, 1500);
         }
       } else {
         setUserProfile(null);
@@ -76,7 +69,6 @@ const App: React.FC = () => {
     fetchUserProfile();
   }, [user]);
 
-  // Effect om alle gebruikers te laden als de user een beheerder is
   useEffect(() => {
     const fetchAllUsers = async () => {
       if (userProfile?.role === 'beheerder') {
@@ -93,9 +85,18 @@ const App: React.FC = () => {
     fetchAllUsers();
   }, [userProfile]);
 
-
+  // DIT IS DE ENIGE, CORRECTE useEffect VOOR checkTime
   useEffect(() => {
     const checkTime = () => {
+      if (Object.keys(appSettings).length === 0) {
+        if (appState !== AppState.CLOSED) {
+            setAppState(AppState.CLOSED);
+            setMessage('Instellingen laden...');
+            setSubMessage('Een moment geduld.');
+        }
+        return;
+      }
+      
       if (products.length === 0 && !loading) {
         setAppState(AppState.CLOSED);
         setMessage('Helaas, geen borrel vandaag.');
@@ -116,16 +117,21 @@ const App: React.FC = () => {
       }
 
       const orderingStartTime = new Date(now);
-      orderingStartTime.setHours(ORDER_START_HOUR, ORDER_START_MINUTE, 0, 0);
+      orderingStartTime.setHours(appSettings.ORDER_START_HOUR, appSettings.ORDER_START_MINUTE, 0, 0);
       const orderingEndTime = new Date(now);
-      orderingEndTime.setHours(ORDER_END_HOUR, ORDER_END_MINUTE, 0, 0);
+      orderingEndTime.setHours(appSettings.ORDER_END_HOUR, appSettings.ORDER_END_MINUTE, 0, 0);
+
+      const rouletteEndTime = new Date(orderingEndTime.getTime() + 15 * 60000); 
 
       if (now.getTime() < orderingStartTime.getTime()) {
         setAppState(AppState.COUNTDOWN);
         setTargetDate(orderingStartTime);
       } else if (now.getTime() < orderingEndTime.getTime()) {
         setAppState(AppState.ORDERING);
-      } else {
+      } else if (now.getTime() < rouletteEndTime.getTime()) {
+        setAppState(AppState.ROULETTE);
+      }
+      else {
         setAppState(AppState.CLOSED);
         setMessage('De besteltijd is voorbij.');
         setSubMessage('Probeer het de volgende borrel opnieuw!');
@@ -135,7 +141,7 @@ const App: React.FC = () => {
     checkTime();
     const interval = setInterval(checkTime, 30000);
     return () => clearInterval(interval);
-  }, [products, loading]);
+  }, [products, loading, appSettings]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -146,16 +152,23 @@ const App: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const [productsRes, locationsRes, ordersRes] = await Promise.all([
+        const [settingsRes, productsRes, locationsRes, ordersRes] = await Promise.all([
+            supabase.from('app_settings').select('key, value'),
             supabase.from('products').select('*').order('position', { ascending: true }),
             supabase.from('locations').select('*').order('position', { ascending: true }),
             supabase.from('kwartvoorbier').select('*, products(*), locations(*), user_id').order('created_at', { ascending: false })
         ]);
 
-        const errors = [productsRes.error, locationsRes.error, ordersRes.error].filter(Boolean);
+        const errors = [settingsRes.error, productsRes.error, locationsRes.error, ordersRes.error].filter(Boolean);
         if (errors.length > 0) {
             setError(`Fout bij laden: ${errors.map(e => getErrorMessage(e)).join(', ')}`);
         } else {
+            const settingsObject = (settingsRes.data || []).reduce((acc, setting) => {
+              acc[setting.key] = parseInt(setting.value, 10);
+              return acc;
+            }, {} as { [key: string]: number });
+            setAppSettings(settingsObject);
+
             setProducts(productsRes.data || []);
             setLocations(locationsRes.data || []);
             const ordersWithDate = (ordersRes.data || []).map(o => ({...o, created_at: new Date(o.created_at)})) as unknown as Order[];
@@ -187,7 +200,7 @@ const App: React.FC = () => {
                   locations: location,
                   collected: newOrderData.collected,
                   delivered: newOrderData.delivered,
-                  user_id: newOrderData.user_id // TOEGEVOEGD
+                  user_id: newOrderData.user_id
               };
               setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)].sort((a,b) => b.created_at.getTime() - a.created_at.getTime()));
             }
@@ -204,7 +217,7 @@ const App: React.FC = () => {
                     locations: location,
                     collected: updatedOrderData.collected,
                     delivered: updatedOrderData.delivered,
-                    user_id: updatedOrderData.user_id // TOEGEVOEGD
+                    user_id: updatedOrderData.user_id
                 };
                 setOrders(prev => prev.map(order => (order.id === updatedOrder.id ? updatedOrder : order)));
              }
@@ -220,7 +233,7 @@ const App: React.FC = () => {
   const handleCountdownComplete = () => { setShowProost(true); setTimeout(() => { setShowProost(false); setAppState(AppState.ORDERING); }, 2500); };
   
   const handleAddOrder = async (orderData: { locationId: number; productId: number; }) => {
-    if (!userProfile || !user) { // Check voor user object ook
+    if (!userProfile || !user) {
         setError("Kan bestelling niet plaatsen: profiel niet geladen.");
         return;
     }
@@ -304,12 +317,46 @@ const App: React.FC = () => {
       return true;
   };
 
+  const handleUpdateSettings = async (newSettings: {
+    startHour: number;
+    startMinute: number;
+    endHour: number;
+    endMinute: number;
+  }): Promise<boolean> => {
+      const updates = [
+          supabase.from('app_settings').update({ value: String(newSettings.startHour) }).eq('key', 'ORDER_START_HOUR'),
+          supabase.from('app_settings').update({ value: String(newSettings.startMinute) }).eq('key', 'ORDER_START_MINUTE'),
+          supabase.from('app_settings').update({ value: String(newSettings.endHour) }).eq('key', 'ORDER_END_HOUR'),
+          supabase.from('app_settings').update({ value: String(newSettings.endMinute) }).eq('key', 'ORDER_END_MINUTE'),
+      ];
+
+      try {
+          const results = await Promise.all(updates);
+          const errorResult = results.find(res => res.error);
+          if (errorResult) {
+              console.error("Fout bij bijwerken instellingen:", errorResult.error);
+              setError("Kon de instellingen niet opslaan: " + errorResult.error.message);
+              return false;
+          }
+
+          setAppSettings({
+              ORDER_START_HOUR: newSettings.startHour,
+              ORDER_START_MINUTE: newSettings.startMinute,
+              ORDER_END_HOUR: newSettings.endHour,
+              ORDER_END_MINUTE: newSettings.endMinute,
+          });
+          return true;
+      } catch (e) {
+          setError(`Onverwachte fout bij opslaan: ${getErrorMessage(e)}.`);
+          return false;
+      }
+  };
+
   const renderMainContent = () => {
-    if (loading || (user && !userProfile && !error) ) return <div className="text-center p-8"><h2 className="text-2xl font-semibold text-amber-800 animate-pulse">Gegevens laden...</h2></div>;
+    if (loading || (user && !userProfile && !error) || Object.keys(appSettings).length === 0 ) return <div className="text-center p-8"><h2 className="text-2xl font-semibold text-amber-800 animate-pulse">Gegevens laden...</h2></div>;
     if (error) return <div className="text-center p-8 bg-red-50 border-2 border-red-200 rounded-lg"><h2 className="text-2xl font-semibold text-red-700">Oeps!</h2><pre className="mt-2 text-left bg-red-100 p-2 rounded">{error}</pre></div>;
 
     if (viewMode === ViewMode.PICKUP) {
-      // AANGEPAST: Geef het userProfile door als 'currentUserProfile'
       return <OrderList 
         orders={orders} 
         locations={locations} 
@@ -325,6 +372,8 @@ const App: React.FC = () => {
                 products={products} 
                 locations={locations}
                 allUsers={allUsers}
+                appSettings={appSettings}
+                onUpdateSettings={handleUpdateSettings}
                 onUpdateUserRole={handleUpdateUserRole}
                 onDeleteUsers={handleDeleteUsers}
                 onAddProduct={handleAddProduct}
@@ -347,16 +396,34 @@ const App: React.FC = () => {
       
       case AppState.ORDERING: {
           const currentDay = new Date().getDay();
-          const availableProducts = products.filter(p => 
-              p.available_on_days && p.available_on_days.includes(currentDay)
-          );
-
+          const availableProducts = products.filter(p => p.available_on_days && p.available_on_days.includes(currentDay));
           if (availableProducts.length === 0 || locations.length === 0) {
               return <div className="text-center p-8"><h2 className="text-2xl font-semibold">Bestellen niet mogelijk</h2><p>Geen producten beschikbaar voor vandaag.</p></div>;
           }
-
           return <OrderForm products={availableProducts} locations={locations} onOrderSubmit={handleAddOrder} />;
       }
+      
+      case AppState.ROULETTE: {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todaysOrders = orders.filter(order => {
+            const orderDate = new Date(order.created_at);
+            orderDate.setHours(0, 0, 0, 0);
+            return orderDate.getTime() === today.getTime();
+        });
+        const uniqueNames = Array.from(new Set(todaysOrders.map(order => order.customerName)));
+        if (uniqueNames.length < 2) {
+          return (
+            <div className="text-center p-8 bg-white rounded-lg shadow-lg">
+              <h2 className="text-2xl font-semibold text-amber-800 mb-2">Te weinig deelnemers!</h2>
+              <p className="text-gray-600">Er is niet genoeg besteld om het wiel te draaien. Geen corvee vandaag!</p>
+              <div className="text-6xl mt-6">🤷‍♂️</div>
+            </div>
+          );
+        }
+        return <RouletteWheel participants={uniqueNames} />;
+      }
+
       case AppState.CLOSED:
       default:
         return <ClosedMessage message={message} subMessage={subMessage} />;
@@ -364,7 +431,6 @@ const App: React.FC = () => {
   };
 
   return (
-    // AANGEPAST: Conditionele verticale uitlijning voor een stabiele layout
     <div className={`min-h-screen bg-amber-50 flex flex-col items-center p-4 ${user ? 'justify-start pt-8' : 'justify-center'}`}>
         <div className="w-full max-w-2xl mx-auto">
             <Header />

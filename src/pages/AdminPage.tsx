@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Product, Location, UserProfile } from '../types';
 
 // DND Kit Imports
@@ -15,6 +15,8 @@ interface AdminPageProps {
   products: Product[];
   locations: Location[];
   allUsers: UserProfile[];
+  appSettings: { [key: string]: number };
+  onUpdateSettings: (newSettings: { startHour: number; startMinute: number; endHour: number; endMinute: number; }) => Promise<boolean>;
   onUpdateUserRole: (userId: string, newRole: string) => Promise<boolean>;
   onDeleteUsers: (userIds: string[]) => Promise<boolean>;
   onAddProduct: (productData: { name: string; available_on_days: number[] }) => Promise<boolean>;
@@ -27,7 +29,7 @@ interface AdminPageProps {
   onUpdateLocationOrder: (locations: Location[]) => Promise<void>;
 }
 
-type AdminTab = 'users' | 'products' | 'locations';
+type AdminTab = 'users' | 'products' | 'locations' | 'tijd';
 
 // --- Modals ---
 const EditProductModal: React.FC<{ product: Product; onClose: () => void; onUpdate: (id: number, productData: { name: string; available_on_days: number[] }) => Promise<boolean>; }> = ({ product, onClose, onUpdate }) => {
@@ -65,9 +67,74 @@ const SortableListItem: React.FC<{ id: any; children: React.ReactNode }> = ({ id
     );
 };
 
+const TimeSettingsForm: React.FC<{
+    initialSettings: { [key: string]: number },
+    onSave: (newSettings: { startHour: number; startMinute: number; endHour: number; endMinute: number; }) => Promise<boolean>
+}> = ({ initialSettings, onSave }) => {
+    const [startTime, setStartTime] = useState('15:45');
+    const [endTime, setEndTime] = useState('16:00');
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+    const formatTime = (h: number | undefined, m: number | undefined) => {
+        if (h === undefined || m === undefined) return '';
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
+
+    useEffect(() => {
+        if (initialSettings.ORDER_START_HOUR !== undefined) {
+            setStartTime(formatTime(initialSettings.ORDER_START_HOUR, initialSettings.ORDER_START_MINUTE));
+        }
+        if (initialSettings.ORDER_END_HOUR !== undefined) {
+            setEndTime(formatTime(initialSettings.ORDER_END_HOUR, initialSettings.ORDER_END_MINUTE));
+        }
+    }, [initialSettings]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSaving(true);
+        setSaveStatus('idle');
+        
+        const [startHour, startMinute] = startTime.split(':').map(Number);
+        const [endHour, endMinute] = endTime.split(':').map(Number);
+        
+        const success = await onSave({ startHour, startMinute, endHour, endMinute });
+
+        setIsSaving(false);
+        setSaveStatus(success ? 'success' : 'error');
+        if (success) {
+            setTimeout(() => setSaveStatus('idle'), 3000);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="p-6 border rounded-lg bg-gray-50 space-y-6 max-w-lg">
+            <div>
+                <label htmlFor="start-time" className="block text-sm font-medium text-gray-700">Starttijd Bestellen</label>
+                <p className="text-xs text-gray-500 mb-1">Vanaf dit tijdstip kan er besteld worden.</p>
+                <input id="start-time" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" required />
+            </div>
+            <div>
+                <label htmlFor="end-time" className="block text-sm font-medium text-gray-700">Eindtijd Bestellen</label>
+                <p className="text-xs text-gray-500 mb-1">Tot dit tijdstip kan er besteld worden. Hierna start de roulette.</p>
+                <input id="end-time" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" required />
+            </div>
+            <div className="flex items-center space-x-4">
+                <button type="submit" disabled={isSaving} className="px-6 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:bg-gray-400 transition-colors">
+                    {isSaving ? 'Opslaan...' : 'Instellingen Opslaan'}
+                </button>
+                {saveStatus === 'success' && <span className="text-green-600 font-medium">Opgeslagen!</span>}
+                {saveStatus === 'error' && <span className="text-red-600 font-medium">Fout bij opslaan.</span>}
+            </div>
+        </form>
+    );
+};
+
+
 const AdminPage: React.FC<AdminPageProps> = (props) => {
     const { 
-        products, locations, allUsers, onUpdateUserRole, onDeleteUsers,
+        products, locations, allUsers, appSettings, onUpdateSettings,
+        onUpdateUserRole, onDeleteUsers,
         onAddProduct, onUpdateProduct, onDeleteProduct, 
         onAddLocation, onUpdateLocation, onDeleteLocation,
         onUpdateProductOrder, onUpdateLocationOrder
@@ -98,7 +165,6 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
         }
     };
     
-    // --- Handlers ---
     const handleNewProductChange = (e: React.ChangeEvent<HTMLInputElement>) => setNewProduct(prev => ({ ...prev, name: e.target.value }));
     const handleNewProductDayChange = (dayValue: number) => { setNewProduct(prev => { const days = prev.available_on_days; const newDays = days.includes(dayValue) ? days.filter(d => d !== dayValue) : [...days, dayValue]; return { ...prev, available_on_days: newDays.sort((a,b) => a - b) }; }); };
     const handleAddProductSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (!newProduct.name.trim()) return; const success = await onAddProduct(newProduct); if (success) setNewProduct({ name: '', available_on_days: [] }); };
@@ -118,7 +184,7 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
             {editingProduct && <EditProductModal product={editingProduct} onClose={() => setEditingProduct(null)} onUpdate={onUpdateProduct} />}
             {editingLocation && <EditLocationModal location={editingLocation} onClose={() => setEditingLocation(null)} onUpdate={onUpdateLocation} />}
             
-            <div className="border-b border-gray-200"><nav className="-mb-px flex space-x-4"><button onClick={() => setActiveTab('users')} className={getTabClassName('users')}>Gebruikers</button><button onClick={() => setActiveTab('products')} className={getTabClassName('products')}>Producten</button><button onClick={() => setActiveTab('locations')} className={getTabClassName('locations')}>Locaties</button></nav></div>
+            <div className="border-b border-gray-200"><nav className="-mb-px flex space-x-4"><button onClick={() => setActiveTab('users')} className={getTabClassName('users')}>Gebruikers</button><button onClick={() => setActiveTab('products')} className={getTabClassName('products')}>Producten</button><button onClick={() => setActiveTab('locations')} className={getTabClassName('locations')}>Locaties</button><button onClick={() => setActiveTab('tijd')} className={getTabClassName('tijd')}>Tijd</button></nav></div>
             
             <div className="bg-white p-6 rounded-b-lg border-l border-r border-b border-gray-200">
                 {activeTab === 'users' && (
@@ -143,6 +209,14 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                         ) : ( <div className="text-center p-4"><p>{allUsers.length > 0 ? 'Geen gebruikers gevonden die voldoen aan de zoekopdracht.' : 'Geen gebruikers gevonden.'}</p></div> )}
                     </div>
                 )}
+                
+                {activeTab === 'tijd' && (
+                    <div>
+                        <h2 className="text-2xl font-bold text-amber-900 mb-6">Tijdinstellingen</h2>
+                        <TimeSettingsForm initialSettings={appSettings} onSave={onUpdateSettings} />
+                    </div>
+                )}
+
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                     {activeTab === 'products' && (
                          <div>
