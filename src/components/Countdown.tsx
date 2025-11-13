@@ -77,7 +77,10 @@ const Countdown: React.FC<CountdownProps> = ({ targetDate, onComplete }) => {
         setTimeLeft({ hours, minutes, seconds });
 
         const timeElapsed = now - initialTime;
-        const percentage = Math.min(100, (timeElapsed / totalDuration) * 100);
+        let percentage = Math.min(100, (timeElapsed / totalDuration) * 100);
+        if (percentage <0){
+          percentage = 0;
+        }
         setFillPercentage(percentage);
       } else {
         clearInterval(timer);
