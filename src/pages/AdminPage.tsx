@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import type { Product, Location, UserProfile } from '../types';
+import type { Product, Location, UserProfile, FeatureRequest, FeatureRequestStatus } from '../types';
 
-// DND Kit Imports
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -11,11 +10,15 @@ const DAYS_OF_WEEK = [
     { label: 'Do', value: 4 }, { label: 'Vr', value: 5 }, { label: 'Za', value: 6 }, { label: 'Zo', value: 0 },
 ];
 
+const TICKET_STATUSES: FeatureRequestStatus[] = ['Backlog', 'Word opgepakt', 'Voltooid'];
+
 interface AdminPageProps {
   products: Product[];
   locations: Location[];
   allUsers: UserProfile[];
   appSettings: { [key: string]: number };
+  allFeatureRequests: FeatureRequest[];
+  onUpdateFeatureRequestStatus: (id: number, newStatus: string) => Promise<boolean>;
   onUpdateSettings: (newSettings: { startHour: number; startMinute: number; endHour: number; endMinute: number; }) => Promise<boolean>;
   onUpdateUserRole: (userId: string, newRole: string) => Promise<boolean>;
   onDeleteUsers: (userIds: string[]) => Promise<boolean>;
@@ -29,9 +32,8 @@ interface AdminPageProps {
   onUpdateLocationOrder: (locations: Location[]) => Promise<void>;
 }
 
-type AdminTab = 'users' | 'products' | 'locations' | 'tijd';
+type AdminTab = 'users' | 'products' | 'locations' | 'tijd' | 'tickets';
 
-// --- Modals ---
 const EditProductModal: React.FC<{ product: Product; onClose: () => void; onUpdate: (id: number, productData: { name: string; available_on_days: number[] }) => Promise<boolean>; }> = ({ product, onClose, onUpdate }) => {
     const [name, setName] = useState(product.name);
     const [availableDays, setAvailableDays] = useState<number[]>(product.available_on_days || []);
@@ -48,7 +50,116 @@ const EditLocationModal: React.FC<{ location: Location; onClose: () => void; onU
     return ( <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md"><h3 className="text-xl font-bold text-amber-900 mb-4">Locatie Bewerken</h3><form onSubmit={handleSubmit} className="space-y-4"><div><label htmlFor="edit-loc-name" className="block text-sm font-medium text-gray-700">Naam</label><input id="edit-loc-name" name="name" type="text" value={formState.name} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm" required /></div><div><label htmlFor="edit-loc-floor" className="block text-sm font-medium text-gray-700">Verdieping</label><input id="edit-loc-floor" name="floor" type="number" value={formState.floor} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm" required /></div><div><label htmlFor="edit-loc-desc" className="block text-sm font-medium text-gray-700">Omschrijving (optioneel)</label><input id="edit-loc-desc" name="description" type="text" value={formState.description} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm" /></div><div className="flex justify-end space-x-3 pt-2"><button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md">Annuleren</button><button type="submit" disabled={isSaving} className="px-4 py-2 bg-amber-600 text-white rounded-md">{isSaving ? 'Opslaan...' : 'Opslaan'}</button></div></form></div></div> );
 };
 
-// --- Sortable Item Component with Drag Handle ---
+const AdminRequestItem: React.FC<{ 
+    request: FeatureRequest; 
+    onStatusChange: (id: number, newStatus: string) => Promise<boolean>;
+}> = ({ request, onStatusChange }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [isUpdating, setIsUpdating] = useState(false);
+
+    const formatDate = (date: Date) => date.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+    const getStatusClasses = (status: FeatureRequestStatus): string => {
+        switch (status) {
+            case 'Voltooid':
+                return 'bg-green-100 text-green-800 border-green-200';
+            case 'Word opgepakt':
+                return 'bg-blue-100 text-blue-800 border-blue-200';
+            case 'Backlog':
+            default:
+                return 'bg-gray-100 text-gray-800 border-gray-300';
+        }
+    };
+
+    const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+        e.stopPropagation(); 
+        const newStatus = e.target.value;
+        setIsUpdating(true);
+        await onStatusChange(request.id, newStatus);
+        setIsUpdating(false);
+    };
+
+    return (
+        <div 
+            className={`
+                border rounded-lg overflow-hidden shadow-sm transition-all duration-300
+                ${isOpen ? 'border-purple-400 shadow-lg bg-purple-50' : 'border-gray-200 bg-white hover:shadow-md'} 
+            `}
+        >
+            <button
+                className="flex justify-between items-center w-full p-4 text-left focus:outline-none"
+                onClick={() => setIsOpen(!isOpen)}
+                aria-expanded={isOpen}
+            >
+                <div className="flex-grow">
+                    <p className={`font-semibold text-lg transition-colors ${isOpen ? 'text-purple-800' : 'text-gray-800'}`}>{request.title}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                        Inzender: <span className="font-medium text-gray-700">{request.customerName}</span> (op {formatDate(request.created_at)})
+                    </p>
+                </div>
+                
+                <div className="flex items-center space-x-4">
+                    <select 
+                        value={request.status} 
+                        onChange={handleStatusChange} 
+                        onClick={(e) => e.stopPropagation()} // <-- Voeg deze regel toe
+                        disabled={isUpdating}
+                        className={`text-xs font-medium px-2 py-1 rounded-md border appearance-none focus:outline-none focus:ring-1 
+                            ${getStatusClasses(request.status)}
+                        `}
+                    >
+                        {TICKET_STATUSES.map(s => (
+                            <option key={s} value={s}>{s}</option>
+                        ))}
+                    </select>
+                    
+                    <svg 
+                        className={`w-5 h-5 transition-transform duration-300 ${isOpen ? 'text-purple-600 rotate-180' : 'text-gray-400 rotate-0'}`}
+                        xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </div>
+            </button>
+            
+            {isOpen && (
+                <div className="py-3 px-4 border-t border-purple-200">
+                    <h4 className="text-sm font-medium text-purple-700 mb-2 pt-2">Volledige Beschrijving:</h4>
+                    <p className="text-sm text-gray-700 p-3 rounded-md whitespace-pre-wrap bg-white border border-purple-100"> 
+                        {request.description}
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
+const TicketsContent: React.FC<{ 
+    requests: FeatureRequest[]; 
+    onStatusChange: (id: number, newStatus: string) => Promise<boolean>;
+}> = ({ requests, onStatusChange }) => {
+    return (
+        <div>
+            <h2 className="text-2xl font-bold text-amber-900 mb-4">Alle Feature Requests ({requests.length})</h2>
+            {requests.length === 0 ? (
+                <div className="text-center p-6 bg-gray-50 rounded-lg">
+                    <p className="text-gray-600">Er zijn nog geen feature requests ingediend.</p>
+                    <div className="text-5xl mt-4">😴</div>
+                </div>
+            ) : (
+                <ul className="space-y-3">
+                    {requests.map(request => (
+                        <li key={request.id}>
+                            <AdminRequestItem request={request} onStatusChange={onStatusChange} />
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+};
+
 const SortableListItem: React.FC<{ id: any; children: React.ReactNode }> = ({ id, children }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
     const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
@@ -133,8 +244,8 @@ const TimeSettingsForm: React.FC<{
 
 const AdminPage: React.FC<AdminPageProps> = (props) => {
     const { 
-        products, locations, allUsers, appSettings, onUpdateSettings,
-        onUpdateUserRole, onDeleteUsers,
+        products, locations, allUsers, appSettings, allFeatureRequests, onUpdateFeatureRequestStatus,
+        onUpdateSettings, onUpdateUserRole, onDeleteUsers,
         onAddProduct, onUpdateProduct, onDeleteProduct, 
         onAddLocation, onUpdateLocation, onDeleteLocation,
         onUpdateProductOrder, onUpdateLocationOrder
@@ -184,7 +295,13 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
             {editingProduct && <EditProductModal product={editingProduct} onClose={() => setEditingProduct(null)} onUpdate={onUpdateProduct} />}
             {editingLocation && <EditLocationModal location={editingLocation} onClose={() => setEditingLocation(null)} onUpdate={onUpdateLocation} />}
             
-            <div className="border-b border-gray-200"><nav className="-mb-px flex space-x-4"><button onClick={() => setActiveTab('users')} className={getTabClassName('users')}>Gebruikers</button><button onClick={() => setActiveTab('products')} className={getTabClassName('products')}>Producten</button><button onClick={() => setActiveTab('locations')} className={getTabClassName('locations')}>Locaties</button><button onClick={() => setActiveTab('tijd')} className={getTabClassName('tijd')}>Tijd</button></nav></div>
+            <div className="border-b border-gray-200"><nav className="-mb-px flex space-x-4">
+                <button onClick={() => setActiveTab('users')} className={getTabClassName('users')}>Gebruikers</button>
+                <button onClick={() => setActiveTab('products')} className={getTabClassName('products')}>Producten</button>
+                <button onClick={() => setActiveTab('locations')} className={getTabClassName('locations')}>Locaties</button>
+                <button onClick={() => setActiveTab('tijd')} className={getTabClassName('tijd')}>Tijd</button>
+                <button onClick={() => setActiveTab('tickets')} className={getTabClassName('tickets')}>Tickets</button>
+            </nav></div>
             
             <div className="bg-white p-6 rounded-b-lg border-l border-r border-b border-gray-200">
                 {activeTab === 'users' && (
@@ -204,13 +321,11 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                                        <div className="flex items-center flex-grow w-full"><input type="checkbox" checked={selectedUserIds.includes(user.id)} onChange={() => handleUserSelectionChange(user.id)} className="h-5 w-5 rounded text-purple-600 focus:ring-purple-500 border-gray-300 mr-4" /><div className="flex-grow"><p className="font-semibold text-gray-800">{user.full_name || <span className="italic text-gray-500">Naamloos</span>}</p><p className="text-sm text-gray-500 truncate" title={user.email || user.id}>{user.email || 'Geen email'}</p></div></div>
                                        <div className="flex-shrink-0 w-full sm:w-auto flex items-center space-x-4">
                                           <select value={user.role} onChange={(e) => onUpdateUserRole(user.id, e.target.value)} className="w-full px-3 py-1 bg-white border border-gray-300 rounded-md shadow-sm"><option value="gebruiker">Gebruiker</option><option value="beheerder">Beheerder</option></select>
-                                          {/* --- START WIJZIGING: Icoon voor verwijderen van gebruiker --- */}
                                           <button onClick={() => handleDeleteUserClick(user.id, user.full_name || user.email || 'deze gebruiker')} className="p-2 text-red-500 hover:text-red-700 rounded-full hover:bg-red-100 transition-colors" title="Verwijder deze gebruiker">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                             </svg>
                                           </button>
-                                          {/* --- EINDE WIJZIGING --- */}
                                        </div>
                                     </li>
                                 ))}
@@ -226,6 +341,13 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                     </div>
                 )}
 
+                {activeTab === 'tickets' && (
+                    <TicketsContent 
+                        requests={allFeatureRequests} 
+                        onStatusChange={onUpdateFeatureRequestStatus} 
+                    />
+                )}
+
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                     {activeTab === 'products' && (
                          <div>
@@ -233,7 +355,6 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                             <form onSubmit={handleAddProductSubmit} className="mb-6 p-4 border rounded-lg bg-gray-50 space-y-4"><div><label htmlFor="new-product-name" className="block text-sm font-medium text-gray-700">Nieuw Product</label><input id="new-product-name" type="text" value={newProduct.name} onChange={handleNewProductChange} placeholder="Naam van drankje" className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md" /></div><div><label className="block text-sm font-medium text-gray-700">Beschikbaar op</label><div className="mt-2 flex flex-wrap gap-2">{DAYS_OF_WEEK.map(day => (<label key={day.value} className="flex items-center space-x-2 cursor-pointer p-2 rounded-md border border-gray-300 has-[:checked]:bg-purple-100 has-[:checked]:border-purple-400 transition-colors"><input type="checkbox" value={day.value} checked={newProduct.available_on_days.includes(day.value)} onChange={() => handleNewProductDayChange(day.value)} className="h-4 w-4 rounded text-purple-600 focus:ring-purple-500 border-gray-300" /><span>{day.label}</span></label>))}</div></div><button type="submit" className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700">Toevoegen</button></form>
                             <h3 className="text-lg font-semibold text-amber-800 mb-2">Bestaande Producten</h3>
                             {products.length > 0 ? (<SortableContext items={products.map(p => p.id)} strategy={verticalListSortingStrategy}><ul className="space-y-2">{products.map(p => (<SortableListItem key={p.id} id={p.id}><div className="flex items-center justify-between w-full"><div className="flex-grow"><span className="text-gray-800 font-semibold">{p.name}</span><div className="text-xs text-gray-500 mt-1">{p.available_on_days && p.available_on_days.length > 0 ? p.available_on_days.map(dayNum => DAYS_OF_WEEK.find(d => d.value === dayNum)?.label).filter(Boolean).join(', ') : <span className="italic">Niet ingepland</span>}</div></div>
-                            {/* --- START WIJZIGING: Knoppen voor producten vervangen door iconen --- */}
                             <div className="flex items-center space-x-2">
                                 <button onClick={() => setEditingProduct(p)} className="p-2 text-blue-600 hover:text-blue-800 rounded-full hover:bg-blue-100 transition-colors" title="Bewerk product">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -246,7 +367,6 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                                     </svg>
                                 </button>
                             </div>
-                            {/* --- EINDE WIJZIGING --- */}
                             </div></SortableListItem>))}</ul></SortableContext>) : <div className="text-center p-4 bg-purple-50 rounded-lg"><p className="text-gray-600">Geen producten gevonden.</p></div>}
                         </div>
                     )}
@@ -256,7 +376,6 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                             <form onSubmit={handleAddLocationSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 items-end p-4 border rounded-lg bg-gray-50"><div className="md:col-span-2"><label htmlFor="new-loc-name" className="block text-sm font-medium text-gray-700">Naam</label><input id="new-loc-name" name="name" type="text" value={newLocation.name} onChange={handleLocationFormChange} placeholder="Kantoornaam" className="mt-1 w-full px-3 py-2 bg-white border border-gray-300 rounded-md"/></div><div><label htmlFor="new-loc-floor" className="block text-sm font-medium text-gray-700">Verdieping</label><input id="new-loc-floor" name="floor" type="number" value={newLocation.floor} onChange={handleLocationFormChange} className="mt-1 w-full px-3 py-2 bg-white border border-gray-300 rounded-md" /></div><div className="md:col-span-3"><label htmlFor="new-loc-desc" className="block text-sm font-medium text-gray-700">Omschrijving (optioneel)</label><input id="new-loc-desc" name="description" type="text" value={newLocation.description} onChange={handleLocationFormChange} placeholder="bv. 'Linker vleugel'" className="mt-1 w-full px-3 py-2 bg-white border border-gray-300 rounded-md" /></div><button type="submit" className="h-10 px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 md:col-start-4">Toevoegen</button></form>
                             <h3 className="text-lg font-semibold text-amber-800 mb-2">Bestaande Locaties</h3>
                             {locations.length > 0 ? (<SortableContext items={locations.map(l => l.id)} strategy={verticalListSortingStrategy}><ul className="space-y-2">{locations.map(l => (<SortableListItem key={l.id} id={l.id}><div className="flex items-center justify-between w-full"><div className="flex-grow"><p className="font-semibold text-gray-800">{l.name} <span className="font-normal text-gray-600">(V{l.floor})</span></p><p className="text-sm text-gray-500">{l.description}</p></div>
-                            {/* --- START WIJZIGING: Knoppen voor locaties vervangen door iconen --- */}
                             <div className="flex items-center space-x-2 flex-shrink-0 ml-4">
                                 <button onClick={() => setEditingLocation(l)} className="p-2 text-blue-600 hover:text-blue-800 rounded-full hover:bg-blue-100 transition-colors" title="Bewerk locatie">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -269,7 +388,6 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
                                     </svg>
                                 </button>
                             </div>
-                            {/* --- EINDE WIJZIGING --- */}
                             </div></SortableListItem>))}</ul></SortableContext>) : <div className="text-center p-4 bg-purple-50 rounded-lg"><p className="text-gray-600">Geen locaties gevonden.</p></div>}
                         </div>
                     )}

@@ -1,33 +1,53 @@
-// React & Libraries
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import { useUser } from '@supabase/auth-helpers-react';
 
-// UI Components
 import Header from './components/Header';
 import Countdown from './components/Countdown';
 import Auth from './components/Auth';
 
-// Feature Components
 import OrderForm from './features/orders/OrderForm';
 import ClosedMessage from './features/orders/ClosedMessage';
 import OrderList from './features/orders/OrderList';
 import RouletteWheel from './features/orders/RouletteWheel';
+import FeatureRequestForm from './features/orders/FeatureRequestForm';
+import FeatureRequestList from './features/orders/FeatureRequestList';
 
-// Page Components
 import AdminPage from './pages/AdminPage';
 
-// Types & Constants
 import { AppState, ViewMode } from './types/index';
-import type { Order, Product, Location, UserProfile } from './types/index';
+import type { Order, Product, Location, UserProfile, FeatureRequest } from './types/index';
+import { THEME_ENABLED } from './constants';
 
-// Helper
 const getErrorMessage = (error: unknown): string => {
   if (error && typeof error === 'object' && 'message' in error) return String((error as { message: unknown }).message);
   if (typeof error === 'string') return error;
   try { return JSON.stringify(error, null, 2); } catch { return 'An un-serializable error occurred.'; }
 };
 
+const SnowflakeOverlay: React.FC = () => {
+    const snowflakes = Array.from({ length: 100 }, (_, i) => {
+        const duration = 10 + Math.random() * 10; 
+        const negativeDelay = -Math.random() * duration; 
+
+        return (
+            <div 
+                key={i} 
+                className="snowflake" 
+                style={{ 
+                    left: `${Math.random() * 100}vw`, 
+                    fontSize: `${0.8 + Math.random() * 1.5}em`,
+                    animationDelay: `${negativeDelay}s`,
+                    animationDuration: `${duration}s`,
+                }}
+            >
+                &#10052; 
+            </div>
+        );
+    });
+
+    return <div className="snow-container">{snowflakes}</div>;
+}
 
 const App: React.FC = () => {
   const user = useUser();
@@ -46,6 +66,11 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [appSettings, setAppSettings] = useState<{ [key: string]: number }>({});
+  const [featureRequests, setFeatureRequests] = useState<FeatureRequest[]>([]);
+  const [allFeatureRequests, setAllFeatureRequests] = useState<FeatureRequest[]>([]);
+  const [isNewRequestMode, setIsNewRequestMode] = useState(false);
+
+  const isChristmasThemeEnabled = THEME_ENABLED;
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -85,7 +110,54 @@ const App: React.FC = () => {
     fetchAllUsers();
   }, [userProfile]);
 
-  // DIT IS DE ENIGE, CORRECTE useEffect VOOR checkTime
+  useEffect(() => {
+    const fetchFeatureRequests = async () => {
+        if (!user) {
+            setFeatureRequests([]);
+            return;
+        }
+        const { data, error } = await supabase
+            .from('feature_requests')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error("Fout bij ophalen feature requests:", error);
+        } else {
+            const requestsWithDate = (data || []).map(r => ({...r, created_at: new Date(r.created_at)})) as FeatureRequest[];
+            setFeatureRequests(requestsWithDate);
+        }
+    };
+    fetchFeatureRequests();
+  }, [user]);
+
+useEffect(() => {
+    const fetchAllFeatureRequests = async () => {
+        if (userProfile?.role !== 'beheerder') {
+            setAllFeatureRequests([]);
+            return;
+        }
+        
+        const { data, error } = await supabase
+            .from('feature_requests')
+            .select('*, profiles(full_name, email)')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error("Fout bij ophalen alle feature requests:", error);
+        } else {
+            const requests = (data || []).map(r => ({
+                ...r, 
+                created_at: new Date(r.created_at),
+                customerName: (r.profiles as any)?.full_name || (r.profiles as any)?.email || 'Onbekend'
+            })) as FeatureRequest[];
+            setAllFeatureRequests(requests);
+        }
+    };
+    fetchAllFeatureRequests();
+  }, [userProfile]);
+
   useEffect(() => {
     const checkTime = () => {
       if (Object.keys(appSettings).length === 0) {
@@ -229,7 +301,6 @@ const App: React.FC = () => {
     return () => { supabase.removeChannel(channel); };
   }, [products, locations]);
 
-  // --- Handlers ---
   const handleCountdownComplete = () => { setShowProost(true); setTimeout(() => { setShowProost(false); setAppState(AppState.ORDERING); }, 2500); };
   
   const handleAddOrder = async (orderData: { locationId: number; productId: number; }) => {
@@ -352,10 +423,45 @@ const App: React.FC = () => {
       }
   };
 
+  const handleUpdateFeatureRequestStatus = async (id: number, newStatus: string): Promise<boolean> => {
+      const { data, error } = await supabase.from('feature_requests').update({ status: newStatus }).eq('id', id).select().single();
+      if (error) {
+          console.error("Fout bij bijwerken feature request status:", error);
+          setError("Kon status niet opslaan: " + error.message);
+          return false;
+      }
+      if (data) {
+          const updatedRequest = {...data, created_at: new Date(data.created_at)} as FeatureRequest;
+          setAllFeatureRequests(prev => prev.map(r => r.id === id ? updatedRequest : r));
+          setFeatureRequests(prev => prev.map(r => r.id === id ? updatedRequest : r));
+      }
+      return true;
+    };
+
+  const handleFeatureRequestSubmit = async (title: string, description: string) => { 
+      if (!user || !userProfile) {
+          console.error("Kan feature request niet plaatsen: Gebruiker of profiel niet geladen.");
+          return;
+      }
+      const { data, error } = await supabase.from('feature_requests').insert({ 
+          title, 
+          description, 
+          user_id: user.id 
+      }).select().single(); 
+
+      if (error) {
+          console.error("Fout bij opslaan feature request:", error);
+          alert("Fout bij het indienen van de feature request: " + error.message);
+          throw new Error(error.message); 
+      } 
+      const newRequest = {...data, created_at: new Date(data.created_at)} as FeatureRequest; 
+      setFeatureRequests(prev => [newRequest, ...prev]);
+      setIsNewRequestMode(false); 
+  };
+
   const renderMainContent = () => {
     if (loading || (user && !userProfile && !error) || Object.keys(appSettings).length === 0 ) return <div className="text-center p-8"><h2 className="text-2xl font-semibold text-amber-800 animate-pulse">Gegevens laden...</h2></div>;
     if (error) return <div className="text-center p-8 bg-red-50 border-2 border-red-200 rounded-lg"><h2 className="text-2xl font-semibold text-red-700">Oeps!</h2><pre className="mt-2 text-left bg-red-100 p-2 rounded">{error}</pre></div>;
-
     if (viewMode === ViewMode.PICKUP) {
       return <OrderList 
         orders={orders} 
@@ -373,6 +479,7 @@ const App: React.FC = () => {
                 locations={locations}
                 allUsers={allUsers}
                 appSettings={appSettings}
+                allFeatureRequests={allFeatureRequests}
                 onUpdateSettings={handleUpdateSettings}
                 onUpdateUserRole={handleUpdateUserRole}
                 onDeleteUsers={handleDeleteUsers}
@@ -384,10 +491,25 @@ const App: React.FC = () => {
                 onDeleteLocation={handleDeleteLocation}
                 onUpdateProductOrder={handleUpdateProductOrder}
                 onUpdateLocationOrder={handleUpdateLocationOrder}
+                onUpdateFeatureRequestStatus={handleUpdateFeatureRequestStatus}
             />;
         }
         return <div className="text-center p-8 bg-white rounded-lg shadow-lg"><h2 className="text-2xl font-semibold">Toegang geweigerd</h2><p>Je moet een beheerder zijn.</p><div className="text-6xl mt-6">🔒</div></div>;
     }
+
+    if (viewMode === ViewMode.FEATURE_REQUEST) {
+            if (isNewRequestMode) {
+                return <FeatureRequestForm 
+                    onFormSubmit={handleFeatureRequestSubmit} 
+                    onCancel={() => setIsNewRequestMode(false)}
+                />;
+            }
+          
+            return <FeatureRequestList 
+                requests={featureRequests}
+                onNewRequestClick={() => setIsNewRequestMode(true)}
+            />;
+        }
 
     if (showProost) return <div className="text-center p-8"><h2 className="text-6xl font-bold text-amber-600 animate-pulse">Proost!</h2><div className="text-8xl mt-4 animate-bounce">🍻</div></div>;
       
@@ -430,20 +552,26 @@ const App: React.FC = () => {
     }
   };
 
+
   return (
-    <div className={`min-h-screen bg-amber-50 flex flex-col items-center p-4 ${user ? 'justify-start pt-8' : 'justify-center'}`}>
+    <div className={`min-h-screen flex flex-col items-center p-4 ${user ? 'justify-start pt-8' : 'justify-center'} ${isChristmasThemeEnabled ? 'bg-blue-50 snow-footer' : 'bg-amber-50'}`}>
+        {isChristmasThemeEnabled && <SnowflakeOverlay />}
         <div className="w-full max-w-2xl mx-auto">
-            <Header />
+            <Header isChristmasThemeEnabled={isChristmasThemeEnabled} />
             <div className="flex justify-center my-4">
               <Auth />
             </div>
-
             {user && (
               <>
-                <div className="flex justify-center rounded-lg bg-purple-900 p-1 my-6" role="tablist">
+                <div className="flex justify-center rounded-lg bg-purple-900 p-1 my-6" role="tablist">                  
                     <button onClick={() => setViewMode(ViewMode.ORDER)} className={`w-1/3 py-2 px-4 rounded-md font-medium transition-colors ${viewMode === ViewMode.ORDER ? 'bg-white shadow text-black' : 'text-white hover:bg-purple-700'}`}>Bier Bestellen</button>
                     <button onClick={() => setViewMode(ViewMode.PICKUP)} className={`w-1/3 py-2 px-4 rounded-md font-medium transition-colors ${viewMode === ViewMode.PICKUP ? 'bg-white shadow text-black' : 'text-white hover:bg-purple-700'}`}>Bier Halen</button>
-
+                    <button 
+                        onClick={() => { setViewMode(ViewMode.FEATURE_REQUEST); setIsNewRequestMode(false); }}
+                        className={`w-1/3 py-2 px-4 rounded-md font-medium transition-colors ${viewMode === ViewMode.FEATURE_REQUEST ? 'bg-white shadow text-black' : 'text-white hover:bg-purple-700'}`}
+                    >
+                        💡 Feature
+                    </button>
                     {userProfile?.role === 'beheerder' && (
                       <button onClick={() => setViewMode(ViewMode.ADMIN)} className={`w-1/3 py-2 px-4 rounded-md font-medium transition-colors ${viewMode === ViewMode.ADMIN ? 'bg-white shadow text-black' : 'text-white hover:bg-purple-700'}`}>Beheer</button>
                     )}

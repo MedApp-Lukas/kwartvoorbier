@@ -1,3 +1,54 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.snowflake {
+  color: #fff;
+  font-size: 1em;
+  font-family: Arial, sans-serif;
+  text-shadow: 0 0 1px #000;
+  position: absolute; /* Zorgt ervoor dat 'left' en 'top' werken */
+}
+
+.snow-container {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  z-index: 1000; 
+}
+
+@keyframes fall {
+  /* Start boven het scherm, eindig onder het scherm */
+  0% { transform: translateY(-100vh); opacity: 0.8; }
+  100% { transform: translateY(100vh); opacity: 0.1; }
+}
+
+.snow-container > div { 
+    animation-name: fall;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+}
+.snow-footer {
+    position: relative;
+    /* Gebruik een schaduw om de sneeuw 'bovenop' de achtergrond te laten lijken */
+    box-shadow: 0 -10px 20px rgba(255, 255, 255, 0.4);
+}
+
+/* NIEUW: Gebruik een pseudo-element voor een golvend/gekarteld sneeuweffect */
+.snow-footer::after {
+    content: '';
+    display: block;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100px; /* Hoogte van de sneeuwrand */
+    background: #ffffff; /* Witte kleur voor de sneeuw */
+    /* Gebruik border-radius voor een golvend/wolkachtig effect */
+    border-top-left-radius: 50% 50%;
+    border-top-right-radius: 50% 50%;
+}

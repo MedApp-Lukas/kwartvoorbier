@@ -10,6 +10,7 @@ export enum ViewMode {
   ORDER = 'ORDER',
   PICKUP = 'PICKUP',
   ADMIN = 'ADMIN',
+  FEATURE_REQUEST = 'FEATURE_REQUEST',
 }
 
 export interface Product {
@@ -42,4 +43,14 @@ export type UserProfile = {
   email?: string; 
   full_name?: string; // Naam van de gebruiker (uit Google)
   role: 'beheerder' | 'gebruiker';
+};
+
+export type FeatureRequestStatus = 'Backlog' | 'Word opgepakt' | 'Voltooid';
+
+export type FeatureRequest = {
+    id: number;
+    created_at: Date;
+    title: string;
+    description: string;
+    user_id: string;
 };
