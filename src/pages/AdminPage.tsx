@@ -295,7 +295,7 @@ const AdminPage: React.FC<AdminPageProps> = (props) => {
             {editingProduct && <EditProductModal product={editingProduct} onClose={() => setEditingProduct(null)} onUpdate={onUpdateProduct} />}
             {editingLocation && <EditLocationModal location={editingLocation} onClose={() => setEditingLocation(null)} onUpdate={onUpdateLocation} />}
             
-            <div className="border-b border-gray-200"><nav className="-mb-px flex space-x-4">
+            <div className="border-b border-gray-200 overflow-x-auto"><nav className="-mb-px flex space-x-4 whitespace-nowrap min-w-max px-2">
                 <button onClick={() => setActiveTab('users')} className={getTabClassName('users')}>Gebruikers</button>
                 <button onClick={() => setActiveTab('products')} className={getTabClassName('products')}>Producten</button>
                 <button onClick={() => setActiveTab('locations')} className={getTabClassName('locations')}>Locaties</button>
