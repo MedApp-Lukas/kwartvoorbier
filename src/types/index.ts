@@ -16,8 +16,9 @@ export enum ViewMode {
 export interface Product {
   id: number;
   name: string;
-  available_on_days: number[] | null; // Voeg deze regel toe
+  available_on_days: number[] | null;
   order_index: number; 
+  position?: number;
 }
 
 export type Location = {
@@ -25,6 +26,7 @@ export type Location = {
   name: string;
   floor: number;
   description: string;
+  position?: number;
 };
 
 export type Order = {
@@ -53,4 +55,6 @@ export type FeatureRequest = {
     title: string;
     description: string;
     user_id: string;
+    status: FeatureRequestStatus;
+    customerName?: string;
 };
