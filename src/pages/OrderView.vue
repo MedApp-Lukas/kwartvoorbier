@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useDataStore } from '../stores/data'
 import { useAppStateStore } from '../stores/appState'
 import { AppState } from '../types'
@@ -21,6 +21,13 @@ const participants = computed(() => {
     const userIds = new Set(data.orders.map(o => o.customerName))
     return Array.from(userIds)
 })
+
+// Watch for when appSettings are loaded and check time
+watch(() => data.appSettings, (newSettings) => {
+  if (Object.keys(newSettings).length > 0) {
+    appState.checkTime()
+  }
+}, { immediate: true })
 
 // Store interval reference for cleanup
 let timeCheckInterval: ReturnType<typeof setInterval> | null = null
@@ -55,12 +62,15 @@ async function handleOrderSubmit(payload: { locationId: number; productId: numbe
     />
     
     <div v-else-if="appState.state === AppState.ORDERING" class="mb-6">
+
+        <!--  Ziet er hendig lelijk uit met deze banner ook op de homepage
         <div class="text-center p-8 bg-white rounded-lg shadow-lg mb-6">
             <h2 class="text-2xl font-semibold text-amber-800 mb-2">Het is tijd! 🍻</h2>
             <p class="text-gray-600">Bestel snel je favoriete drankje.</p>
             <div class="text-6xl mt-6">🏃💨</div>
         </div>
-        
+         -->
+
         <!-- Order Form when it's ordering time -->
         <div v-if="availableProducts.length === 0 || data.locations.length === 0" class="text-center p-8 bg-white rounded-lg shadow-lg">
             <h2 class="text-2xl font-semibold">Bestellen niet mogelijk</h2>

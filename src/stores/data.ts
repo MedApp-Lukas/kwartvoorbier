@@ -51,7 +51,7 @@ export const useDataStore = defineStore('data', () => {
 
       products.value = productsRes.data || []
       locations.value = locationsRes.data || []
-      orders.value = (ordersRes.data || []).map(o => ({...o, created_at: new Date(o.created_at)})) as unknown as Order[]
+      orders.value = (ordersRes.data || []).map(o => ({ ...o, created_at: new Date(o.created_at) })) as unknown as Order[]
 
     } catch (e: any) {
       error.value = e.message || 'Unknown error'
@@ -63,12 +63,12 @@ export const useDataStore = defineStore('data', () => {
   async function addOrder(locationId: number, productId: number) {
     if (!auth.user || !userProfile.value) return
     const customerName = userProfile.value.full_name || userProfile.value.email || 'Onbekende Gebruiker'
-    
+
     const { error: err } = await supabase.from('kwartvoorbier').insert({
-        customerName,
-        location: locationId,
-        productOrdered: productId,
-        user_id: auth.user.id
+      customerName,
+      location: locationId,
+      productOrdered: productId,
+      user_id: auth.user.id
     })
     if (err) throw err
     // Realtime subscription will update the list, but we could optimistically update here if needed
@@ -77,40 +77,42 @@ export const useDataStore = defineStore('data', () => {
   async function deleteOrder(orderId: number) {
     const { error: err } = await supabase.from('kwartvoorbier').delete().eq('id', orderId)
     if (err) throw err
+    orders.value = orders.value.filter(o => o.id !== orderId)
   }
 
   async function updateOrderStatus(orderId: number, newStatus: { collected?: boolean; delivered?: boolean }) {
     const { error: err } = await supabase.from('kwartvoorbier').update(newStatus).eq('id', orderId)
     if (err) throw err
+    orders.value = orders.value.map(o => o.id === orderId ? { ...o, ...newStatus } : o)
   }
 
   async function addFeatureRequest(title: string, description: string) {
     if (!auth.user) return
     const { data, error: err } = await supabase.from('feature_requests').insert({
-        title,
-        description,
-        user_id: auth.user.id
+      title,
+      description,
+      user_id: auth.user.id
     }).select().single()
-    
+
     if (err) throw err
     if (data) {
-        const newRequest = {...data, created_at: new Date(data.created_at)} as FeatureRequest
-        featureRequests.value = [newRequest, ...featureRequests.value]
+      const newRequest = { ...data, created_at: new Date(data.created_at) } as FeatureRequest
+      featureRequests.value = [newRequest, ...featureRequests.value]
     }
   }
 
   async function fetchFeatureRequests() {
-      if (!auth.user) return
-      const { data, error: err } = await supabase
-          .from('feature_requests')
-          .select('*')
-          .eq('user_id', auth.user.id)
-          .order('created_at', { ascending: false })
-      
-      if (err) console.error(err)
-      else {
-          featureRequests.value = (data || []).map(r => ({...r, created_at: new Date(r.created_at)})) as FeatureRequest[]
-      }
+    if (!auth.user) return
+    const { data, error: err } = await supabase
+      .from('feature_requests')
+      .select('*')
+      .eq('user_id', auth.user.id)
+      .order('created_at', { ascending: false })
+
+    if (err) console.error(err)
+    else {
+      featureRequests.value = (data || []).map(r => ({ ...r, created_at: new Date(r.created_at) })) as FeatureRequest[]
+    }
   }
 
   // Admin Actions
@@ -167,52 +169,77 @@ export const useDataStore = defineStore('data', () => {
   }
 
   async function updateSettings(newSettings: { startHour: number; startMinute: number; endHour: number; endMinute: number }) {
-      const updates = [
-          supabase.from('app_settings').update({ value: String(newSettings.startHour) }).eq('key', 'ORDER_START_HOUR'),
-          supabase.from('app_settings').update({ value: String(newSettings.startMinute) }).eq('key', 'ORDER_START_MINUTE'),
-          supabase.from('app_settings').update({ value: String(newSettings.endHour) }).eq('key', 'ORDER_END_HOUR'),
-          supabase.from('app_settings').update({ value: String(newSettings.endMinute) }).eq('key', 'ORDER_END_MINUTE'),
-      ]
-      await Promise.all(updates)
-      // Update local state
-      appSettings.value = {
-          ORDER_START_HOUR: newSettings.startHour,
-          ORDER_START_MINUTE: newSettings.startMinute,
-          ORDER_END_HOUR: newSettings.endHour,
-          ORDER_END_MINUTE: newSettings.endMinute,
-      }
+    const updates = [
+      supabase.from('app_settings').update({ value: String(newSettings.startHour) }).eq('key', 'ORDER_START_HOUR'),
+      supabase.from('app_settings').update({ value: String(newSettings.startMinute) }).eq('key', 'ORDER_START_MINUTE'),
+      supabase.from('app_settings').update({ value: String(newSettings.endHour) }).eq('key', 'ORDER_END_HOUR'),
+      supabase.from('app_settings').update({ value: String(newSettings.endMinute) }).eq('key', 'ORDER_END_MINUTE'),
+    ]
+    await Promise.all(updates)
+    // Update local state
+    appSettings.value = {
+      ORDER_START_HOUR: newSettings.startHour,
+      ORDER_START_MINUTE: newSettings.startMinute,
+      ORDER_END_HOUR: newSettings.endHour,
+      ORDER_END_MINUTE: newSettings.endMinute,
+    }
   }
-  
+
   async function updateFeatureRequestStatus(id: number, newStatus: string) {
-      const { data, error: err } = await supabase.from('feature_requests').update({ status: newStatus }).eq('id', id).select().single()
-      if (err) throw err
-      if (data) {
-          const updatedRequest = {...data, created_at: new Date(data.created_at)} as FeatureRequest
-          featureRequests.value = featureRequests.value.map(r => r.id === id ? updatedRequest : r)
-      }
+    const { data, error: err } = await supabase.from('feature_requests').update({ status: newStatus }).eq('id', id).select().single()
+    if (err) throw err
+    if (data) {
+      const updatedRequest = { ...data, created_at: new Date(data.created_at) } as FeatureRequest
+      featureRequests.value = featureRequests.value.map(r => r.id === id ? updatedRequest : r)
+    }
   }
 
   async function fetchAllUsers() {
-      const { data, error: err } = await supabase.from('profiles').select('*')
-      if (err) console.error(err)
-      else allUsers.value = data || []
+    const { data, error: err } = await supabase.from('profiles').select('*')
+    if (err) console.error(err)
+    else allUsers.value = data || []
   }
-  
-  async function fetchAllFeatureRequests() {
-        const { data, error: err } = await supabase
-            .from('feature_requests')
-            .select('*, profiles(full_name, email)')
-            .order('created_at', { ascending: false })
 
-        if (err) console.error(err)
-        else {
-            featureRequests.value = (data || []).map(r => ({
-                ...r, 
-                created_at: new Date(r.created_at),
-                customerName: (r.profiles as any)?.full_name || (r.profiles as any)?.email || 'Onbekend'
-            })) as FeatureRequest[]
-        }
+  async function fetchAllFeatureRequests() {
+    const { data, error: err } = await supabase
+      .from('feature_requests')
+      .select('*, profiles(full_name, email)')
+      .order('created_at', { ascending: false })
+
+    if (err) console.error(err)
+    else {
+      featureRequests.value = (data || []).map(r => ({
+        ...r,
+        created_at: new Date(r.created_at),
+        customerName: (r.profiles as any)?.full_name || (r.profiles as any)?.email || 'Onbekend'
+      })) as FeatureRequest[]
+    }
   }
+
+  async function updateProductPositions(productIds: number[]) {
+    // Update positions in database based on array order
+    const updates = productIds.map((id, index) =>
+      supabase.from('products').update({ position: index }).eq('id', id)
+    )
+    await Promise.all(updates)
+
+    // Update local state to reflect new order
+    const orderedProducts = productIds.map(id => products.value.find(p => p.id === id)).filter(Boolean) as Product[]
+    products.value = orderedProducts
+  }
+
+  async function updateLocationPositions(locationIds: number[]) {
+    // Update positions in database based on array order
+    const updates = locationIds.map((id, index) =>
+      supabase.from('locations').update({ position: index }).eq('id', id)
+    )
+    await Promise.all(updates)
+
+    // Update local state to reflect new order
+    const orderedLocations = locationIds.map(id => locations.value.find(l => l.id === id)).filter(Boolean) as Location[]
+    locations.value = orderedLocations
+  }
+
 
   return {
     products,
@@ -242,7 +269,10 @@ export const useDataStore = defineStore('data', () => {
     updateSettings,
     updateFeatureRequestStatus,
     fetchAllUsers,
-    fetchAllFeatureRequests
+    fetchAllFeatureRequests,
+    updateProductPositions,
+    updateLocationPositions
   }
+
 
 })

@@ -8,11 +8,11 @@ const router = createRouter({
       name: 'home',
       component: () => import('../pages/OrderView.vue')
     },
-    {
-      path: '/status',
-      name: 'status',
-      component: () => import('../pages/HomeView.vue')
-    },
+    // {
+    //   path: '/status',
+    //   name: 'status',
+    //   component: () => import('../pages/HomeView.vue')
+    // },
     {
       path: '/afhalen',
       name: 'pickup',
