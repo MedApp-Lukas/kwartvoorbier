@@ -116,7 +116,7 @@ async function handleDragEnd() {
                         <div class="flex-grow">
                             <span class="text-gray-800 font-semibold">{{ p.name }}</span>
                             <div class="text-xs text-gray-500 mt-1">
-                                {{ p.available_on_days && p.available_on_days.length > 0 ? p.available_on_days.map(dayNum => DAYS_OF_WEEK.find(d => d.value === dayNum)?.label).filter(Boolean).join(', ') : 'Niet ingepland' }}
+                                {{ p.available_on_days && p.available_on_days.length > 0 ? p.available_on_days.map((dayNum: number) => DAYS_OF_WEEK.find(d => d.value === dayNum)?.label).filter(Boolean).join(', ') : 'Niet ingepland' }}
                             </div>
                         </div>
                     </div>
