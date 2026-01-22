@@ -1,1 +1,1 @@
-export const THEME_ENABLED = true;
+export const THEME_ENABLED = false;

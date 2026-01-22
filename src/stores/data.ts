@@ -190,8 +190,14 @@ export const useDataStore = defineStore('data', () => {
     if (err) throw err
     if (data) {
       const updatedRequest = { ...data, created_at: new Date(data.created_at) } as FeatureRequest
-      featureRequests.value = featureRequests.value.map(r => r.id === id ? updatedRequest : r)
+      featureRequests.value = featureRequests.value.map(request => request.id === id ? updatedRequest : request)
     }
+  }
+
+  async function deleteFeatureRequest(id: number) {
+    const { error: err } = await supabase.from('feature_requests').delete().eq('id', id)
+    if (err) throw err
+    featureRequests.value = featureRequests.value.filter(request => request.id !== id)
   }
 
   async function fetchAllUsers() {
@@ -268,6 +274,7 @@ export const useDataStore = defineStore('data', () => {
     deleteLocation,
     updateSettings,
     updateFeatureRequestStatus,
+    deleteFeatureRequest,
     fetchAllUsers,
     fetchAllFeatureRequests,
     updateProductPositions,
