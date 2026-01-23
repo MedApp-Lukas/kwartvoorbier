@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 
 const props = defineProps<{
   participants: string[]
+  safePerson?: string | null
 }>()
 
 const mustSpin = ref(false)
@@ -40,10 +41,22 @@ function mulberry32(seed: number) {
 function spin() {
     if (mustSpin.value || winner.value) return
 
-    const seed = createDailySeed(props.participants)
+    const spinCandidates = props.participants.filter(p => p !== props.safePerson)
+    if (spinCandidates.length === 0) return // Should not happen ideally
+
+    const seed = createDailySeed(spinCandidates)
     const deterministicRandom = mulberry32(seed)
-    const winnerIndex = Math.floor(deterministicRandom() * props.participants.length)
-    prizeNumber.value = winnerIndex
+    const winnerIndex = Math.floor(deterministicRandom() * spinCandidates.length)
+    
+    // We need to map back to the original index for rotation? 
+    // Actually, rotation is just visual. The "prizeNumber" is used for??? prizeNumber seems unused in template logic for position?
+    // Wait, the rotation logic calculates `winnerIndex * segmentAngle`.
+    // We need the index *in the full list*.
+    
+    const winnerName = spinCandidates[winnerIndex]
+    const originalIndex = props.participants.indexOf(winnerName)
+    
+    prizeNumber.value = originalIndex
     
     mustSpin.value = true
     
@@ -55,7 +68,7 @@ function spin() {
     
     setTimeout(() => {
         mustSpin.value = false
-        winner.value = props.participants[winnerIndex]
+        winner.value = props.participants[originalIndex]
     }, 5000) // 5 seconds spin
 }
 
@@ -93,7 +106,9 @@ onMounted(() => {
                 class="absolute top-0 left-1/2 w-1 h-1/2 origin-bottom flex justify-center pt-4"
                 :style="{ transform: `translateX(-50%) rotate(${index * (360 / participants.length) + (360 / participants.length / 2)}deg)` }"
              >
-                <span class="text-white font-bold text-sm whitespace-nowrap transform -rotate-90 origin-center">{{ participant }}</span>
+                <span class="text-white font-bold text-sm whitespace-nowrap transform -rotate-90 origin-center">
+                    {{ participant }} <span v-if="participant === safePerson">🤠</span>
+                </span>
              </div>
         </div>
     </div>
