@@ -12,6 +12,10 @@ const data = useDataStore()
 const appState = useAppStateStore()
 
 const availableProducts = computed(() => {
+  // ALWAYS SHOW ALL PRODUCTS IN LOCAL DEVELOPMENT
+  if (import.meta.env.DEV) {
+    return data.products
+  }
   const currentDay = new Date().getDay()
   return data.products.filter(p => p.available_on_days && p.available_on_days.includes(currentDay))
 })
@@ -34,6 +38,7 @@ let timeCheckInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(() => {
   appState.checkTime()
+  data.fetchUserHistory()
   timeCheckInterval = setInterval(appState.checkTime, 30000)
 })
 
