@@ -4,6 +4,12 @@ import OrderList from '../components/orders/OrderList.vue'
 
 const data = useDataStore()
 
+import { onMounted } from 'vue'
+
+onMounted(() => {
+  data.fetchTodaysOrders()
+})
+
 async function handleDeleteOrder(orderId: number) {
   try {
     await data.deleteOrder(orderId)

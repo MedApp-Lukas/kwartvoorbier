@@ -13,6 +13,12 @@ export const useAppStateStore = defineStore('appState', () => {
   const dataStore = useDataStore()
 
   function checkTime() {
+    // ALWAYS ALLOW ORDERING IN LOCAL DEVELOPMENT
+    if (import.meta.env.DEV) {
+        state.value = AppState.ORDERING
+        return
+    }
+
     if (Object.keys(dataStore.appSettings).length === 0) {
         if (state.value !== AppState.CLOSED) {
             state.value = AppState.CLOSED

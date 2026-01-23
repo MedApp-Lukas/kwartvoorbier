@@ -1,13 +1,15 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { supabase } from '../lib/supabase'
 import type { Product, Location, Order, UserProfile, FeatureRequest } from '../types'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import { useAuthStore } from './auth'
 
 export const useDataStore = defineStore('data', () => {
   const products = ref<Product[]>([])
   const locations = ref<Location[]>([])
   const orders = ref<Order[]>([])
+  const recentUserOrders = ref<Order[]>([]) // New state for user history
   const userProfile = ref<UserProfile | null>(null)
   const allUsers = ref<UserProfile[]>([])
   const featureRequests = ref<FeatureRequest[]>([])
@@ -16,6 +18,12 @@ export const useDataStore = defineStore('data', () => {
   const error = ref<string | null>(null)
 
   const auth = useAuthStore()
+  
+  // Real-time subscription channels
+  let ordersChannel: RealtimeChannel | null = null
+  let productsChannel: RealtimeChannel | null = null
+  let locationsChannel: RealtimeChannel | null = null
+  let featureRequestsChannel: RealtimeChannel | null = null
 
   async function fetchUserProfile() {
     if (!auth.user) return
@@ -32,17 +40,16 @@ export const useDataStore = defineStore('data', () => {
     loading.value = true
     error.value = null
     try {
-      const [settingsRes, productsRes, locationsRes, ordersRes] = await Promise.all([
+      const [settingsRes, productsRes, locationsRes] = await Promise.all([
         supabase.from('app_settings').select('key, value'),
         supabase.from('products').select('*').order('position', { ascending: true }),
-        supabase.from('locations').select('*').order('position', { ascending: true }),
-        supabase.from('kwartvoorbier').select('*, products(*), locations(*), user_id').order('created_at', { ascending: false })
+        supabase.from('locations').select('*').order('position', { ascending: true })
+        // Removed global orders fetch
       ])
 
       if (settingsRes.error) throw settingsRes.error
       if (productsRes.error) throw productsRes.error
       if (locationsRes.error) throw locationsRes.error
-      if (ordersRes.error) throw ordersRes.error
 
       appSettings.value = (settingsRes.data || []).reduce((acc, setting) => {
         acc[setting.key] = parseInt(setting.value, 10)
@@ -51,7 +58,12 @@ export const useDataStore = defineStore('data', () => {
 
       products.value = productsRes.data || []
       locations.value = locationsRes.data || []
-      orders.value = (ordersRes.data || []).map(o => ({ ...o, created_at: new Date(o.created_at) })) as unknown as Order[]
+      products.value = productsRes.data || []
+      locations.value = locationsRes.data || []
+      // orders.value is now populated by specific page logic
+
+      // Setup real-time subscriptions after initial data load
+      setupRealtimeSubscriptions()
 
     } catch (e: any) {
       error.value = e.message || 'Unknown error'
@@ -60,24 +72,182 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
+  function setupRealtimeSubscriptions() {
+    // Cleanup existing subscriptions first
+    cleanupRealtimeSubscriptions()
+
+    // Subscribe to orders (kwartvoorbier) changes
+    ordersChannel = supabase
+      .channel('orders-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'kwartvoorbier' },
+        async (payload) => {
+          if (payload.eventType === 'INSERT') {
+            // Check if order already exists (optimistic update might have added it)
+            // We check both arrays to be safe
+            const existingInOrders = orders.value.find(o => o.id === payload.new.id)
+            const existingInRecent = recentUserOrders.value.find(o => o.id === payload.new.id)
+            
+            if (existingInOrders && existingInRecent) return
+
+            // Fetch the full order with relations
+            const { data } = await supabase
+              .from('kwartvoorbier')
+              .select('*, products(*), locations(*), user_id')
+              .eq('id', payload.new.id)
+              .single()
+            
+            if (data) {
+              const newOrder = { ...data, created_at: new Date(data.created_at) } as unknown as Order
+              
+              // Update main orders list (if not duplicate)
+              if (!existingInOrders) {
+                 orders.value = [newOrder, ...orders.value]
+              }
+
+              // Update user recent orders (if belongs to user and not duplicate)
+              if (!existingInRecent && auth.user && data.user_id === auth.user.id) {
+                 recentUserOrders.value = [newOrder, ...recentUserOrders.value]
+              }
+            }
+          } else if (payload.eventType === 'UPDATE') {
+             // Update in global orders
+            const index = orders.value.findIndex(o => o.id === payload.new.id)
+            if (index !== -1) {
+              orders.value[index] = { ...orders.value[index], ...payload.new }
+            }
+            
+            // Update in recent user orders
+            const recentIndex = recentUserOrders.value.findIndex(o => o.id === payload.new.id)
+            if (recentIndex !== -1) {
+              recentUserOrders.value[recentIndex] = { ...recentUserOrders.value[recentIndex], ...payload.new }
+            }
+
+          } else if (payload.eventType === 'DELETE') {
+            orders.value = orders.value.filter(o => o.id !== payload.old.id)
+            recentUserOrders.value = recentUserOrders.value.filter(o => o.id !== payload.old.id)
+          }
+        }
+      )
+      .subscribe()
+
+    // Subscribe to products changes
+    productsChannel = supabase
+      .channel('products-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            products.value = [...products.value, payload.new as Product]
+          } else if (payload.eventType === 'UPDATE') {
+            const index = products.value.findIndex(p => p.id === payload.new.id)
+            if (index !== -1) {
+              products.value[index] = payload.new as Product
+            }
+          } else if (payload.eventType === 'DELETE') {
+            products.value = products.value.filter(p => p.id !== payload.old.id)
+          }
+        }
+      )
+      .subscribe()
+
+    // Subscribe to locations changes
+    locationsChannel = supabase
+      .channel('locations-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'locations' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            locations.value = [...locations.value, payload.new as Location]
+          } else if (payload.eventType === 'UPDATE') {
+            const index = locations.value.findIndex(l => l.id === payload.new.id)
+            if (index !== -1) {
+              locations.value[index] = payload.new as Location
+            }
+          } else if (payload.eventType === 'DELETE') {
+            locations.value = locations.value.filter(l => l.id !== payload.old.id)
+          }
+        }
+      )
+      .subscribe()
+
+    // Subscribe to feature_requests changes
+    featureRequestsChannel = supabase
+      .channel('feature-requests-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'feature_requests' },
+        async (payload) => {
+          if (payload.eventType === 'INSERT') {
+            // Fetch with profile relation if needed
+            const newRequest = { ...payload.new, created_at: new Date(payload.new.created_at) } as FeatureRequest
+            featureRequests.value = [newRequest, ...featureRequests.value]
+          } else if (payload.eventType === 'UPDATE') {
+            const index = featureRequests.value.findIndex(r => r.id === payload.new.id)
+            if (index !== -1) {
+              featureRequests.value[index] = { 
+                ...featureRequests.value[index], 
+                ...payload.new,
+                created_at: new Date(payload.new.created_at)
+              } as FeatureRequest
+            }
+          } else if (payload.eventType === 'DELETE') {
+            featureRequests.value = featureRequests.value.filter(r => r.id !== payload.old.id)
+          }
+        }
+      )
+      .subscribe()
+  }
+
+  function cleanupRealtimeSubscriptions() {
+    if (ordersChannel) {
+      supabase.removeChannel(ordersChannel)
+      ordersChannel = null
+    }
+    if (productsChannel) {
+      supabase.removeChannel(productsChannel)
+      productsChannel = null
+    }
+    if (locationsChannel) {
+      supabase.removeChannel(locationsChannel)
+      locationsChannel = null
+    }
+    if (featureRequestsChannel) {
+      supabase.removeChannel(featureRequestsChannel)
+      featureRequestsChannel = null
+    }
+  }
+
+  // Cleanup on store unmount
+  onUnmounted(() => {
+    cleanupRealtimeSubscriptions()
+  })
+
   async function addOrder(locationId: number, productId: number) {
     if (!auth.user || !userProfile.value) return
     const customerName = userProfile.value.full_name || userProfile.value.email || 'Onbekende Gebruiker'
 
-    const { error: err } = await supabase.from('kwartvoorbier').insert({
+    const { data: newOrder, error: err } = await supabase.from('kwartvoorbier').insert({
       customerName,
       location: locationId,
       productOrdered: productId,
       user_id: auth.user.id
-    })
+    }).select('*, products(*), locations(*), user_id').single()
+    
     if (err) throw err
-    // Realtime subscription will update the list, but we could optimistically update here if needed
+    
+    // Optimistic update: Add immediately to local state
+    if (newOrder) {
+      const formattedOrder = { ...newOrder, created_at: new Date(newOrder.created_at) } as unknown as Order
+      orders.value = [formattedOrder, ...orders.value]
+      recentUserOrders.value = [formattedOrder, ...recentUserOrders.value]
+    }
   }
 
   async function deleteOrder(orderId: number) {
     const { error: err } = await supabase.from('kwartvoorbier').delete().eq('id', orderId)
     if (err) throw err
     orders.value = orders.value.filter(o => o.id !== orderId)
+    recentUserOrders.value = recentUserOrders.value.filter(o => o.id !== orderId)
   }
 
   async function updateOrderStatus(orderId: number, newStatus: { collected?: boolean; delivered?: boolean }) {
@@ -216,6 +386,41 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
+  async function fetchUserHistory() {
+    if (!auth.user) return
+    const { data, error: err } = await supabase
+      .from('kwartvoorbier')
+      .select('*, products(*), locations(*), user_id')
+      .eq('user_id', auth.user.id)
+      .order('created_at', { ascending: false })
+      .limit(15) 
+
+    if (err) console.error(err)
+    else {
+      recentUserOrders.value = (data || []).map(o => ({ ...o, created_at: new Date(o.created_at) })) as unknown as Order[]
+    }
+  }
+
+  async function fetchTodaysOrders() {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    // We strictly want orders from "today"
+    // Note: depending on timezone requirements, this might need adjustment, but JS Date works for local perception usually.
+    // Using ISOString sends UTC, which is correct for Supabase comparisons usually.
+    
+    const { data, error: err } = await supabase
+      .from('kwartvoorbier')
+      .select('*, products(*), locations(*), user_id')
+      .gte('created_at', today.toISOString())
+      .order('created_at', { ascending: false })
+
+    if (err) console.error(err)
+    else {
+      orders.value = (data || []).map(o => ({ ...o, created_at: new Date(o.created_at) })) as unknown as Order[]
+    }
+  }
+
   async function updateProductPositions(productIds: number[]) {
     // Update positions in database based on array order
     const updates = productIds.map((id, index) =>
@@ -240,6 +445,34 @@ export const useDataStore = defineStore('data', () => {
     locations.value = orderedLocations
   }
 
+  // Computed properties for user order history
+  // Using recentUserOrders instead of filtering global orders
+  
+  const getUserLastLocation = computed(() => {
+    if (recentUserOrders.value.length === 0) return null
+    // Get the most recent order (index 0 because we sorted desc in fetch)
+    return recentUserOrders.value[0].locations.id
+  })
+
+  const getUserOrderHistory = computed(() => {
+    if (recentUserOrders.value.length === 0) return []
+    
+    // Group orders by unique product+location combination
+    const uniqueOrders = new Map<string, Order>()
+    
+    // recentUserOrders is already sorted desc
+    
+    for (const order of recentUserOrders.value) {
+      const key = `${order.products.id}-${order.locations.id}`
+      if (!uniqueOrders.has(key)) {
+        uniqueOrders.set(key, order)
+      }
+    }
+    
+    // Return up to 5 most recent unique orders
+    return Array.from(uniqueOrders.values()).slice(0, 5)
+  })
+
 
   return {
     products,
@@ -253,6 +486,8 @@ export const useDataStore = defineStore('data', () => {
     error,
     fetchUserProfile,
     fetchInitialData,
+    setupRealtimeSubscriptions,
+    cleanupRealtimeSubscriptions,
     addOrder,
     deleteOrder,
     updateOrderStatus,
@@ -270,8 +505,13 @@ export const useDataStore = defineStore('data', () => {
     updateFeatureRequestStatus,
     fetchAllUsers,
     fetchAllFeatureRequests,
+    fetchUserHistory,
+    fetchTodaysOrders,
     updateProductPositions,
-    updateLocationPositions
+    updateLocationPositions,
+    // Order history
+    getUserLastLocation,
+    getUserOrderHistory
   }
 
 
