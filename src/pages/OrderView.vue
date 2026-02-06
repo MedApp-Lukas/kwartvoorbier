@@ -92,6 +92,7 @@ async function handleOrderSubmit(payload: { locationId: number; productId: numbe
     <RouletteWheel 
         v-else-if="appState.state === AppState.ROULETTE" 
         :participants="participants" 
+        :safePerson="data.lastRunnerName"
     />
 
     <ClosedMessage 

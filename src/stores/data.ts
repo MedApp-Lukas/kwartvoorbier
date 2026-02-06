@@ -13,6 +13,7 @@ export const useDataStore = defineStore('data', () => {
   const userProfile = ref<UserProfile | null>(null)
   const allUsers = ref<UserProfile[]>([])
   const featureRequests = ref<FeatureRequest[]>([])
+  const lastRunnerName = ref<string | null>(null)
   const appSettings = ref<{ [key: string]: number }>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -392,6 +393,7 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
+<<<<<<< Updated upstream
   async function fetchUserHistory() {
     if (!auth.user) return
     const { data, error: err } = await supabase
@@ -425,6 +427,78 @@ export const useDataStore = defineStore('data', () => {
     else {
       orders.value = (data || []).map(o => ({ ...o, created_at: new Date(o.created_at) })) as unknown as Order[]
     }
+=======
+  // Logic duplicated from RouletteWheel.vue to ensure consistency
+  // Ideally this should be a shared utility
+  function createSeed(date: Date, participants: string[]): number {
+    const dateString = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+    const namesString = [...participants].sort().join(',')
+    const seedString = dateString + namesString
+    
+    let hash = 0
+    for (let i = 0; i < seedString.length; i++) {
+        const char = seedString.charCodeAt(i)
+        hash = ((hash << 5) - hash) + char
+        hash = hash & hash
+    }
+    return hash
+  }
+
+  function mulberry32(seed: number) {
+      return function() {
+        let t = seed += 0x6D2B79F5
+        t = Math.imul(t ^ t >>> 15, t | 1)
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61)
+        return ((t ^ t >>> 14) >>> 0) / 4294967296
+      }
+  }
+
+  async function fetchLastRunner() {
+      // 1. Find the most recent date with orders (before today)
+      // We fetch a small batch of recent unique dates
+      
+      const today = new Date()
+      today.setHours(0,0,0,0)
+
+      const { data: recentOrders, error: err } = await supabase
+        .from('kwartvoorbier')
+        .select('created_at, customerName')
+        .lt('created_at', today.toISOString()) // Strictly before today
+        .order('created_at', { ascending: false })
+        .limit(100)
+
+      if (err || !recentOrders || recentOrders.length === 0) {
+          lastRunnerName.value = null
+          return
+      }
+
+      // 2. Determine the "last ordering date"
+      const lastOrderDate = new Date(recentOrders[0].created_at)
+      const lastDateStr = lastOrderDate.toDateString()
+
+      // 3. Get all participants from that date
+      const participants = new Set<string>()
+      for (const o of recentOrders) {
+          const d = new Date(o.created_at)
+          if (d.toDateString() === lastDateStr) {
+              participants.add(o.customerName)
+          }
+      }
+
+      if (participants.size === 0) {
+          lastRunnerName.value = null
+          return
+      }
+
+      const participantArray = Array.from(participants)
+
+      // 4. Re-run Roulette Logic
+      const seed = createSeed(lastOrderDate, participantArray)
+      const deterministicRandom = mulberry32(seed)
+      const winnerIndex = Math.floor(deterministicRandom() * participantArray.length)
+      
+      lastRunnerName.value = participantArray[winnerIndex]
+>>>>>>> Stashed changes
   }
 
   async function updateProductPositions(productIds: number[]) {
@@ -488,6 +562,7 @@ export const useDataStore = defineStore('data', () => {
     allUsers,
     featureRequests,
     appSettings,
+    lastRunnerName,
     loading,
     error,
     fetchUserProfile,
@@ -512,8 +587,12 @@ export const useDataStore = defineStore('data', () => {
     deleteFeatureRequest,
     fetchAllUsers,
     fetchAllFeatureRequests,
+<<<<<<< Updated upstream
     fetchUserHistory,
     fetchTodaysOrders,
+=======
+    fetchLastRunner,
+>>>>>>> Stashed changes
     updateProductPositions,
     updateLocationPositions,
     // Order history
