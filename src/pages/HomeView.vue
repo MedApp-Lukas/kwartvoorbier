@@ -1,20 +1,13 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useDataStore } from '../stores/data'
 import { useAppStateStore } from '../stores/appState'
 import Countdown from '../components/Countdown.vue'
 import ClosedMessage from '../components/ClosedMessage.vue'
-import RouletteWheel from '../components/RouletteWheel.vue'
 import { AppState } from '../types'
 
 const data = useDataStore()
 const appState = useAppStateStore()
-
-const participants = computed(() => {
-    // Unique users who ordered
-    const userIds = new Set(data.orders.map(o => o.customerName))
-    return Array.from(userIds)
-})
 
 // Store interval reference for cleanup
 let timeCheckInterval: ReturnType<typeof setInterval> | null = null
@@ -45,10 +38,11 @@ onUnmounted(() => {
         <div class="text-6xl mt-6">🏃💨</div>
     </div>
 
-    <RouletteWheel 
-        v-else-if="appState.state === AppState.ROULETTE" 
-        :participants="participants" 
-    />
+    <div v-else-if="appState.state === AppState.ROULETTE" class="text-center p-8 bg-white rounded-lg shadow-lg">
+        <h2 class="text-2xl font-semibold text-amber-800 mb-2">De besteltijd is voorbij!</h2>
+        <p class="text-gray-600">Ga naar de bestelpagina om te zien wie er moet halen.</p>
+        <div class="text-6xl mt-6">🎡</div>
+    </div>
 
     <ClosedMessage 
         v-else-if="appState.state === AppState.CLOSED" 
