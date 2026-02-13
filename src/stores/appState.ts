@@ -9,10 +9,38 @@ export const useAppStateStore = defineStore('appState', () => {
     const subMessage = ref('')
     const targetDate = ref(new Date())
     const showProost = ref(false)
+    
+    // Dev / Manual Override State
+    const manualOverride = ref<AppState | null>(null)
+    const rouletteKey = ref(0) // Used to force re-mount/re-spin of roulette
 
     const dataStore = useDataStore()
+    
+    function triggerRouletteSpin() {
+        if (state.value !== AppState.ROULETTE) {
+            manualOverride.value = AppState.ROULETTE
+        }
+        // Increment key to force re-render/re-spin
+        rouletteKey.value++
+    }
+    
+    function setManualState(newState: AppState | null) {
+        manualOverride.value = newState
+        checkTime() // Re-evaluate state
+    }
 
     function checkTime() {
+        // 0. Manual Override takes precedence over everything
+        if (manualOverride.value !== null) {
+            state.value = manualOverride.value
+             // Set default messages for manual states if needed
+            if (state.value === AppState.CLOSED) {
+                message.value = 'Handmatig gesloten'
+                 subMessage.value = 'Dev Override'
+            }
+            return
+        }
+
         // IN LOCAL DEVELOPMENT: Use VITE_DEV_APP_STATE env var if set, otherwise default to ORDERING
         if (import.meta.env.DEV) {
             const devState = import.meta.env.VITE_DEV_APP_STATE
@@ -103,6 +131,10 @@ export const useAppStateStore = defineStore('appState', () => {
         subMessage,
         targetDate,
         showProost,
-        checkTime
+        manualOverride,
+        rouletteKey,
+        checkTime,
+        triggerRouletteSpin,
+        setManualState
     }
 })

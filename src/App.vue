@@ -5,10 +5,12 @@ import { useDataStore } from './stores/data'
 import Header from './components/Header.vue'
 import Auth from './components/Auth.vue'
 import SnowflakeOverlay from './components/SnowflakeOverlay.vue'
+import DevPanel from './components/DevPanel.vue'
 import { THEME_ENABLED } from './constants'
 
 const auth = useAuthStore()
 const data = useDataStore()
+const isDev = import.meta.env.DEV
 
 onMounted(async () => {
   document.body.className = THEME_ENABLED ? 'bg-blue-50' : 'bg-amber-50'
@@ -41,6 +43,7 @@ onMounted(async () => {
         <router-view />
       </main>
     </div>
+    <DevPanel v-if="isDev" />
   </div>
 </template>
 
