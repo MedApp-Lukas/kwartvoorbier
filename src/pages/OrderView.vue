@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useDataStore } from '../stores/data'
 import { useAppStateStore } from '../stores/appState'
+import { useAuthStore } from '../stores/auth'
 import { AppState } from '../types'
 import OrderForm from '../components/orders/OrderForm.vue'
 import Countdown from '../components/Countdown.vue'
@@ -10,6 +11,7 @@ import RouletteWheel from '../components/RouletteWheel.vue'
 
 const data = useDataStore()
 const appState = useAppStateStore()
+const auth = useAuthStore()
 
 const availableProducts = computed(() => {
   // ALWAYS SHOW ALL PRODUCTS IN LOCAL DEVELOPMENT
@@ -22,8 +24,20 @@ const availableProducts = computed(() => {
 
 const participants = computed(() => {
     // Unique users who ordered
-    const userIds = new Set(data.orders.map(o => o.customerName))
-    return Array.from(userIds)
+    const uniqueUsers = new Map<string, { name: string; avatarUrl?: string }>()
+    
+    data.orders.forEach(o => {
+        if (!uniqueUsers.has(o.customerName)) {
+            // Try to get avatar from profile relation if available
+            const profile = (o as any).profiles
+            uniqueUsers.set(o.customerName, {
+                name: o.customerName,
+                avatarUrl: profile?.avatar_url
+            })
+        }
+    })
+    
+    return Array.from(uniqueUsers.values())
 })
 
 // Watch for when appSettings are loaded and check time
@@ -39,6 +53,7 @@ let timeCheckInterval: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
   appState.checkTime()
   data.fetchUserHistory()
+  data.fetchTodaysOrders()
   timeCheckInterval = setInterval(appState.checkTime, 30000)
 })
 
@@ -58,7 +73,7 @@ async function handleOrderSubmit(payload: { locationId: number; productId: numbe
 </script>
 
 <template>
-  <div>
+  <div v-if="auth.user">
     <!-- Status Display (like old home page) -->
     <Countdown 
         v-if="appState.state === AppState.COUNTDOWN" 
@@ -91,6 +106,7 @@ async function handleOrderSubmit(payload: { locationId: number; productId: numbe
 
     <RouletteWheel 
         v-else-if="appState.state === AppState.ROULETTE" 
+        :key="'roulette-' + appState.state"
         :participants="participants" 
         :safePerson="data.lastRunnerName"
     />

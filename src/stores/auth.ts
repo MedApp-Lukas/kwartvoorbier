@@ -13,7 +13,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = data.session?.user ?? null
     loading.value = false
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth.onAuthStateChange(async (_event, session) => {
       user.value = session?.user ?? null
     })
   }
@@ -31,6 +31,15 @@ export const useAuthStore = defineStore('auth', () => {
   async function signOut() {
     const { error } = await supabase.auth.signOut()
     if (error) console.error('Error signing out:', error.message)
+
+    // Force local cleanup even if server errors
+    user.value = null
+
+    // Optional: Clear any local storage if needed, though supabase client should handle it
+    // localStorage.clear() 
+
+    // Reload to ensure clean state
+    window.location.reload()
   }
 
   return {

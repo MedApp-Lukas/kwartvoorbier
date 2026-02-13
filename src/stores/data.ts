@@ -19,7 +19,7 @@ export const useDataStore = defineStore('data', () => {
   const error = ref<string | null>(null)
 
   const auth = useAuthStore()
-  
+
   // Real-time subscription channels
   let ordersChannel: RealtimeChannel | null = null
   let productsChannel: RealtimeChannel | null = null
@@ -80,7 +80,7 @@ export const useDataStore = defineStore('data', () => {
     // Subscribe to orders (kwartvoorbier) changes
     ordersChannel = supabase
       .channel('orders-changes')
-      .on('postgres_changes', 
+      .on('postgres_changes',
         { event: '*', schema: 'public', table: 'kwartvoorbier' },
         async (payload) => {
           if (payload.eventType === 'INSERT') {
@@ -88,7 +88,7 @@ export const useDataStore = defineStore('data', () => {
             // We check both arrays to be safe
             const existingInOrders = orders.value.find(o => o.id === payload.new.id)
             const existingInRecent = recentUserOrders.value.find(o => o.id === payload.new.id)
-            
+
             if (existingInOrders && existingInRecent) return
 
             // Fetch the full order with relations
@@ -97,27 +97,27 @@ export const useDataStore = defineStore('data', () => {
               .select('*, products(*), locations(*), user_id')
               .eq('id', payload.new.id)
               .single()
-            
+
             if (data) {
               const newOrder = { ...data, created_at: new Date(data.created_at) } as unknown as Order
-              
+
               // Update main orders list (if not duplicate)
               if (!existingInOrders) {
-                 orders.value = [newOrder, ...orders.value]
+                orders.value = [newOrder, ...orders.value]
               }
 
               // Update user recent orders (if belongs to user and not duplicate)
               if (!existingInRecent && auth.user && data.user_id === auth.user.id) {
-                 recentUserOrders.value = [newOrder, ...recentUserOrders.value]
+                recentUserOrders.value = [newOrder, ...recentUserOrders.value]
               }
             }
           } else if (payload.eventType === 'UPDATE') {
-             // Update in global orders
+            // Update in global orders
             const index = orders.value.findIndex(o => o.id === payload.new.id)
             if (index !== -1) {
               orders.value[index] = { ...orders.value[index], ...payload.new }
             }
-            
+
             // Update in recent user orders
             const recentIndex = recentUserOrders.value.findIndex(o => o.id === payload.new.id)
             if (recentIndex !== -1) {
@@ -185,8 +185,8 @@ export const useDataStore = defineStore('data', () => {
           } else if (payload.eventType === 'UPDATE') {
             const index = featureRequests.value.findIndex(r => r.id === payload.new.id)
             if (index !== -1) {
-              featureRequests.value[index] = { 
-                ...featureRequests.value[index], 
+              featureRequests.value[index] = {
+                ...featureRequests.value[index],
                 ...payload.new,
                 created_at: new Date(payload.new.created_at)
               } as FeatureRequest
@@ -233,9 +233,9 @@ export const useDataStore = defineStore('data', () => {
       productOrdered: productId,
       user_id: auth.user.id
     }).select('*, products(*), locations(*), user_id').single()
-    
+
     if (err) throw err
-    
+
     // Optimistic update: Add immediately to local state
     if (newOrder) {
       const formattedOrder = { ...newOrder, created_at: new Date(newOrder.created_at) } as unknown as Order
@@ -393,7 +393,6 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
-<<<<<<< Updated upstream
   async function fetchUserHistory() {
     if (!auth.user) return
     const { data, error: err } = await supabase
@@ -401,7 +400,7 @@ export const useDataStore = defineStore('data', () => {
       .select('*, products(*), locations(*), user_id')
       .eq('user_id', auth.user.id)
       .order('created_at', { ascending: false })
-      .limit(15) 
+      .limit(15)
 
     if (err) console.error(err)
     else {
@@ -412,93 +411,55 @@ export const useDataStore = defineStore('data', () => {
   async function fetchTodaysOrders() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    
-    // We strictly want orders from "today"
-    // Note: depending on timezone requirements, this might need adjustment, but JS Date works for local perception usually.
-    // Using ISOString sends UTC, which is correct for Supabase comparisons usually.
-    
-    const { data, error: err } = await supabase
-      .from('kwartvoorbier')
-      .select('*, products(*), locations(*), user_id')
-      .gte('created_at', today.toISOString())
-      .order('created_at', { ascending: false })
 
-    if (err) console.error(err)
-    else {
-      orders.value = (data || []).map(o => ({ ...o, created_at: new Date(o.created_at) })) as unknown as Order[]
-    }
-=======
-  // Logic duplicated from RouletteWheel.vue to ensure consistency
-  // Ideally this should be a shared utility
-  function createSeed(date: Date, participants: string[]): number {
-    const dateString = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
-    const namesString = [...participants].sort().join(',')
-    const seedString = dateString + namesString
-    
-    let hash = 0
-    for (let i = 0; i < seedString.length; i++) {
-        const char = seedString.charCodeAt(i)
-        hash = ((hash << 5) - hash) + char
-        hash = hash & hash
-    }
-    return hash
-  }
-
-  function mulberry32(seed: number) {
-      return function() {
-        let t = seed += 0x6D2B79F5
-        t = Math.imul(t ^ t >>> 15, t | 1)
-        t ^= t + Math.imul(t ^ t >>> 7, t | 61)
-        return ((t ^ t >>> 14) >>> 0) / 4294967296
-      }
-  }
-
-  async function fetchLastRunner() {
-      // 1. Find the most recent date with orders (before today)
-      // We fetch a small batch of recent unique dates
-      
-      const today = new Date()
-      today.setHours(0,0,0,0)
-
-      const { data: recentOrders, error: err } = await supabase
+    try {
+      // 1. Fetch orders without the profiles join to avoid relation errors
+      const { data: ordersData, error: ordersError } = await supabase
         .from('kwartvoorbier')
-        .select('created_at, customerName')
-        .lt('created_at', today.toISOString()) // Strictly before today
+        .select('*, products(*), locations(*), user_id')
+        .gte('created_at', today.toISOString())
         .order('created_at', { ascending: false })
-        .limit(100)
 
-      if (err || !recentOrders || recentOrders.length === 0) {
-          lastRunnerName.value = null
-          return
+      if (ordersError) throw ordersError
+
+      if (!ordersData || ordersData.length === 0) {
+        orders.value = []
+        return
       }
 
-      // 2. Determine the "last ordering date"
-      const lastOrderDate = new Date(recentOrders[0].created_at)
-      const lastDateStr = lastOrderDate.toDateString()
+      // 2. Extract unique user IDs from orders
+      const uniqueUserIds = [...new Set(ordersData.map(o => o.user_id).filter(id => id))]
 
-      // 3. Get all participants from that date
-      const participants = new Set<string>()
-      for (const o of recentOrders) {
-          const d = new Date(o.created_at)
-          if (d.toDateString() === lastDateStr) {
-              participants.add(o.customerName)
-          }
+      // 3. Fetch profiles for these users
+      let profilesData: any[] = []
+      if (uniqueUserIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', uniqueUserIds)
+
+        if (!profilesError && profiles) {
+          profilesData = profiles
+        } else {
+          console.warn('Could not fetch profiles manually:', profilesError)
+        }
       }
 
-      if (participants.size === 0) {
-          lastRunnerName.value = null
-          return
-      }
+      // 4. Merge profiles into orders manually
+      const profilesMap = new Map(profilesData.map(p => [p.id, p]))
 
-      const participantArray = Array.from(participants)
+      orders.value = ordersData.map(o => {
+        const profile = profilesMap.get(o.user_id)
+        return {
+          ...o,
+          created_at: new Date(o.created_at),
+          profiles: profile ? { full_name: profile.full_name, avatar_url: profile.avatar_url } : null
+        }
+      }) as unknown as Order[]
 
-      // 4. Re-run Roulette Logic
-      const seed = createSeed(lastOrderDate, participantArray)
-      const deterministicRandom = mulberry32(seed)
-      const winnerIndex = Math.floor(deterministicRandom() * participantArray.length)
-      
-      lastRunnerName.value = participantArray[winnerIndex]
->>>>>>> Stashed changes
+    } catch (err) {
+      console.error('Error fetching todays orders:', err)
+    }
   }
 
   async function updateProductPositions(productIds: number[]) {
@@ -527,7 +488,7 @@ export const useDataStore = defineStore('data', () => {
 
   // Computed properties for user order history
   // Using recentUserOrders instead of filtering global orders
-  
+
   const getUserLastLocation = computed(() => {
     if (recentUserOrders.value.length === 0) return null
     // Get the most recent order (index 0 because we sorted desc in fetch)
@@ -536,19 +497,19 @@ export const useDataStore = defineStore('data', () => {
 
   const getUserOrderHistory = computed(() => {
     if (recentUserOrders.value.length === 0) return []
-    
+
     // Group orders by unique product+location combination
     const uniqueOrders = new Map<string, Order>()
-    
+
     // recentUserOrders is already sorted desc
-    
+
     for (const order of recentUserOrders.value) {
       const key = `${order.products.id}-${order.locations.id}`
       if (!uniqueOrders.has(key)) {
         uniqueOrders.set(key, order)
       }
     }
-    
+
     // Return up to 5 most recent unique orders
     return Array.from(uniqueOrders.values()).slice(0, 5)
   })
@@ -587,12 +548,8 @@ export const useDataStore = defineStore('data', () => {
     deleteFeatureRequest,
     fetchAllUsers,
     fetchAllFeatureRequests,
-<<<<<<< Updated upstream
     fetchUserHistory,
     fetchTodaysOrders,
-=======
-    fetchLastRunner,
->>>>>>> Stashed changes
     updateProductPositions,
     updateLocationPositions,
     // Order history

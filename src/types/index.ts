@@ -17,7 +17,7 @@ export interface Product {
   id: number;
   name: string;
   available_on_days: number[] | null;
-  order_index: number; 
+  order_index: number;
   position?: number;
 }
 
@@ -42,19 +42,20 @@ export type Order = {
 
 export type UserProfile = {
   id: string;
-  email?: string; 
+  email?: string;
   full_name?: string; // Naam van de gebruiker (uit Google)
+  avatar_url?: string; // Profielfoto URL (uit Google)
   role: 'beheerder' | 'gebruiker';
 };
 
 export type FeatureRequestStatus = 'Backlog' | 'Word opgepakt' | 'Voltooid';
 
 export type FeatureRequest = {
-    id: number;
-    created_at: Date;
-    title: string;
-    description: string;
-    user_id: string;
-    status: FeatureRequestStatus;
-    customerName?: string;
+  id: number;
+  created_at: Date;
+  title: string;
+  description: string;
+  user_id: string;
+  status: FeatureRequestStatus;
+  customerName?: string;
 };
