@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
-import { useDataStore } from '../stores/data'
 import { useAppStateStore } from '../stores/appState'
 import Countdown from '../components/Countdown.vue'
 import ClosedMessage from '../components/ClosedMessage.vue'
 import { AppState } from '../types'
 
-const data = useDataStore()
 const appState = useAppStateStore()
 
 // Store interval reference for cleanup

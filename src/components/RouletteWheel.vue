@@ -16,8 +16,27 @@ const displayParticipants = ref<{ name: string; avatarUrl?: string }[]>([])
 
 const CARD_WIDTH = 160 // Width of a single card in pixels
 const CARD_GAP = 16 // Gap between cards in pixels
-const TOTAL_CARDS = 80 // Total cards in the strip
-const WINNER_INDEX = 65 // Index where the winner will be placed
+const TOTAL_CARDS = 80 // Restored to 80 for long spin
+const WINNER_INDEX = 65 // Restored to land deep in the strip
+
+// Local cache for avatar Blobs to guarantee 1 request per participant
+const localAvatarCache = ref<Map<string, string>>(new Map())
+
+async function cacheAvatars() {
+    for (const p of props.participants) {
+        if (p.avatarUrl && !localAvatarCache.value.has(p.avatarUrl)) {
+            try {
+                // Fetch the image once
+                const response = await fetch(p.avatarUrl)
+                const blob = await response.blob()
+                const objectUrl = URL.createObjectURL(blob)
+                localAvatarCache.value.set(p.avatarUrl, objectUrl)
+            } catch (e) {
+                console.error('Failed to cache avatar:', p.avatarUrl, e)
+            }
+        }
+    }
+}
 
 // Deterministic random logic
 function createDailySeed(participants: { name: string }[]): number {
@@ -44,27 +63,43 @@ function mulberry32(seed: number) {
   }
 }
 
+const isSpinning = ref(false)
+
 function generateStrip(winnerObj: { name: string; avatarUrl?: string }) {
+    if (displayParticipants.value.length > 0) return // Already generated
+
     const spinCandidates = props.participants.filter(p => p.name !== props.safePerson)
     if (spinCandidates.length === 0) return
 
     const strip: { name: string; avatarUrl?: string }[] = []
     
-    // Fill the strip with random participants
+    // Fill the strip using local cache URLs if available
     for (let i = 0; i < TOTAL_CARDS; i++) {
+        let card: { name: string; avatarUrl?: string }
         if (i === WINNER_INDEX) {
-            strip.push(winnerObj)
+            card = { ...winnerObj }
         } else {
             const randomIndex = Math.floor(Math.random() * spinCandidates.length)
-            strip.push(spinCandidates[randomIndex])
+            card = { ...spinCandidates[randomIndex] }
         }
+        
+        // Use cached blob URL if it exists
+        if (card.avatarUrl && localAvatarCache.value.has(card.avatarUrl)) {
+            card.avatarUrl = localAvatarCache.value.get(card.avatarUrl)
+        }
+        
+        strip.push(card)
     }
     displayParticipants.value = strip
 }
 
-function spin() {
-    if (hasStarted.value || mustSpin.value || winner.value) return
+async function spin() {
+    if (hasStarted.value || mustSpin.value || winner.value || isSpinning.value) return
     
+    // First ensure avatars are cached properly
+    await cacheAvatars()
+    
+    isSpinning.value = true
     hasStarted.value = true
 
     const spinCandidates = props.participants.filter(p => p.name !== props.safePerson)
@@ -89,13 +124,9 @@ function spin() {
             showCountdown.value = false
             mustSpin.value = true
             
-            // Calculate scroll position
-            // Adding some randomness within the card width to make it look real
-            const randomOffset = (Math.random() * (CARD_WIDTH - 20)) - ((CARD_WIDTH - 20) / 2)
-            
-            // Assuming container is roughly 672px (max-w-2xl) -> center is 336
-            // We want center of winner card to align with center of container
+            // Calculate scroll position landing on WINNER_INDEX
             const centerOffset = (672 / 2) - (CARD_WIDTH / 2)
+            const randomOffset = (Math.random() * (CARD_WIDTH - 20)) - ((CARD_WIDTH - 20) / 2)
             const targetX = -((WINNER_INDEX * (CARD_WIDTH + CARD_GAP)) - centerOffset + randomOffset)
             
             translateX.value = targetX
@@ -103,23 +134,26 @@ function spin() {
             setTimeout(() => {
                 mustSpin.value = false
                 winner.value = winnerObj.name
-            }, 6000) // 6 seconds spin styling matches duration-associated
+            }, 6000) 
         }
     }, 1000)
 }
 
-onMounted(() => {
+onMounted(async () => {
     if (props.participants.length > 0) {
+        await cacheAvatars()
         setTimeout(spin, 500)
     }
 })
 
-// Watch for participants to be loaded (for async data loading)
-watch(() => props.participants, (newParticipants) => {
+// Watch for participants to be loaded
+watch(() => props.participants, async (newParticipants) => {
     if (newParticipants.length > 0 && !hasStarted.value) {
+        await cacheAvatars()
         setTimeout(spin, 500)
     }
 }, { immediate: true })
+
 </script>
 
 <template>
@@ -145,7 +179,7 @@ watch(() => props.participants, (newParticipants) => {
         >
             <div 
                 v-for="(card, index) in displayParticipants" 
-                :key="index"
+                :key="'card-' + index"
                 class="flex-shrink-0 bg-white border-2 border-amber-100 rounded-lg shadow-sm flex flex-col items-center justify-center p-2"
                 :style="{ width: `${CARD_WIDTH}px`, height: '200px' }"
                 :class="{ 'border-amber-500 ring-2 ring-amber-300': index === WINNER_INDEX && winner }"
@@ -153,6 +187,7 @@ watch(() => props.participants, (newParticipants) => {
                 <img 
                     v-if="card.avatarUrl" 
                     :src="card.avatarUrl" 
+                    :key="'img-' + index"
                     class="w-24 h-24 rounded-full object-cover mb-3"
                 />
                 <div v-else class="w-24 h-24 rounded-full bg-amber-100 flex items-center justify-center mb-3 text-3xl">

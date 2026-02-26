@@ -18,6 +18,7 @@ const locationId = ref<string>('')
 const productId = ref<string>('')
 const isSubmitted = ref(false)
 
+
 // Initialize location with user's last location or first available
 onMounted(() => {
   initializeLocation()
@@ -53,7 +54,10 @@ const orderHistory = computed(() => data.getUserOrderHistory)
 
 function handleSubmit() {
   if (locationId.value && productId.value) {
-    emit('order-submit', { locationId: Number(locationId.value), productId: Number(productId.value) })
+    emit('order-submit', { 
+      locationId: Number(locationId.value), 
+      productId: Number(productId.value) 
+    })
     isSubmitted.value = true
   }
 }
@@ -190,7 +194,7 @@ function handleReorder(order: Order) {
         </div>
         <button
           type="submit"
-          class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:bg-gray-400 transition-colors"
+          class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:bg-gray-400 transition-colors"
           :disabled="!locationId || !productId"
         >
           Bestellen

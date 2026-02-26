@@ -63,12 +63,8 @@ onUnmounted(() => {
   }
 })
 
-async function handleOrderSubmit(payload: { locationId: number; productId: number }) {
-  try {
-    await data.addOrder(payload.locationId, payload.productId)
-  } catch (e) {
-    alert('Fout bij bestellen: ' + e)
-  }
+function handleOrderSubmit(payload: { locationId: number; productId: number }) {
+  data.addOrder(payload.locationId, payload.productId)
 }
 </script>
 

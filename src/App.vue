@@ -1,71 +1,67 @@
-<script setup lang="ts">
-import { onMounted } from 'vue'
-import { useAuthStore } from './stores/auth'
-import { useDataStore } from './stores/data'
-import Header from './components/Header.vue'
-import Auth from './components/Auth.vue'
-import SnowflakeOverlay from './components/SnowflakeOverlay.vue'
-import { THEME_ENABLED } from './constants'
-
-const auth = useAuthStore()
-const data = useDataStore()
-
-onMounted(async () => {
-  document.body.className = THEME_ENABLED ? 'bg-blue-50' : 'bg-amber-50'
-  await auth.initialize()
-  if (auth.user) {
-    await data.fetchUserProfile()
-    await data.fetchInitialData()
-  }
-})
-</script>
-
 <template>
-  <div :class="['min-h-screen flex flex-col items-center p-4', auth.user ? 'justify-start pt-8' : 'justify-center', THEME_ENABLED ? 'bg-blue-50 snow-footer' : 'bg-amber-50']">
-    <SnowflakeOverlay v-if="THEME_ENABLED" />
-    <div class="w-full max-w-2xl mx-auto">
-      <Header :isChristmasThemeEnabled="THEME_ENABLED" />
-      <div class="flex justify-center my-4">
-        <Auth />
+  <div class="min-h-[80vh] flex items-center justify-center p-4">
+    <div class="w-full max-w-md space-y-8 text-center animate-fly-in">
+      
+      <div class="relative inline-block">
+        <div class="text-8xl mb-4 animate-bounce-slow">
+          🍻
+        </div>
+        <div class="absolute -top-2 -right-2 bg-coral-500 text-white text-xs font-black px-2 py-1 rounded-full shadow-lg rotate-12">
+          NEW
+        </div>
       </div>
 
-      <div v-if="auth.user" class="flex justify-center rounded-lg bg-purple-900 p-1 my-6" role="tablist">
-        <router-link to="/" class="menu-btn w-1/4 py-2 px-4 rounded-md font-medium text-center text-white hover:bg-purple-700 border-2 border-transparent" active-class="border-white"><span class="menu-text">Bestellen</span></router-link>
-        <router-link to="/afhalen" class="menu-btn w-1/4 py-2 px-4 rounded-md font-medium text-center text-white hover:bg-purple-700 border-2 border-transparent" active-class="border-white"><span class="menu-text">Afhalen</span></router-link>
-        <!-- <router-link to="/status" class="menu-btn w-1/4 py-2 px-4 rounded-md font-medium text-center text-white hover:bg-purple-700 border-2 border-transparent" active-class="border-white"><span class="menu-text">Status</span></router-link> -->
-        <router-link to="/feature-requests" class="menu-btn w-1/4 py-2 px-4 rounded-md font-medium text-center text-white hover:bg-purple-700 border-2 border-transparent" active-class="border-white"><span class="menu-text">💡 Feature</span></router-link>
-        <router-link v-if="data.userProfile?.role === 'beheerder'" to="/beheer" class="menu-btn w-1/4 py-2 px-4 rounded-md font-medium text-center text-white hover:bg-purple-700 border-2 border-transparent" active-class="border-white"><span class="menu-text">Beheer</span></router-link>
+      <div class="bg-coral-50 rounded-3xl shadow-xl p-8 border border-coral-100">
+        <h1 class="text-3xl font-black text-primary-900 mb-2">
+          We zijn verhuisd!
+        </h1>
+        <p class="text-gray-600 mb-8 leading-relaxed">
+          Kwartvoorbier is verhuisd naar een sneller en mooier plekje. Je kunt hier niet meer bestellen.
+        </p>
+
+        <a 
+          href="https://kwartvoorbier-fe1df.web.app" 
+          class="block w-full bg-coral-500 text-red-500 py-4 px-6 rounded-2xl text-xl font-bold shadow-lg hover:bg-coral-600 transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-3 group"
+        >
+          <span>Ga naar de nieuwe site</span>
+          <span class="group-hover:translate-x-1 transition-transform">🚀</span>
+        </a>
+
+        <p class="mt-6 text-sm text-primary-600 font-medium">
+          Tip: Sla de nieuwe URL direct op!
+        </p>
       </div>
 
-      <main>
-        <router-view />
-      </main>
+      <div class="text-primary-900/40 text-sm font-medium">
+        kwartvoorbier.er
+      </div>
+      
     </div>
   </div>
 </template>
 
 <style scoped>
-.menu-btn {
-  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: visible;
+@keyframes flyInFromTop {
+  0% { opacity: 0; transform: translateY(-40px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
-.menu-text {
-  display: inline-block;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+@keyframes bounceSlow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-15px); }
 }
 
-.menu-btn:hover .menu-text {
-  transform: scale(1.1);
+.animate-fly-in {
+  opacity: 0;
+  animation: flyInFromTop 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-.menu-btn:active .menu-text {
-  transform: scale(1.05);
+.animate-bounce-slow {
+  animation: bounceSlow 3s ease-in-out infinite;
 }
 
-/* Smooth transition for active state */
-.menu-btn.router-link-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+/* Background subtiele decoratie om het koraal thema te matchen */
+:host {
+  background-color: #fffaf8;
 }
 </style>

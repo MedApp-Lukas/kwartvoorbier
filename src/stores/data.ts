@@ -20,6 +20,10 @@ export const useDataStore = defineStore('data', () => {
 
   const auth = useAuthStore()
 
+
+
+
+
   // Real-time subscription channels
   let ordersChannel: RealtimeChannel | null = null
   let productsChannel: RealtimeChannel | null = null
@@ -45,7 +49,6 @@ export const useDataStore = defineStore('data', () => {
         supabase.from('app_settings').select('key, value'),
         supabase.from('products').select('*').order('position', { ascending: true }),
         supabase.from('locations').select('*').order('position', { ascending: true })
-        // Removed global orders fetch
       ])
 
       if (settingsRes.error) throw settingsRes.error
@@ -59,9 +62,6 @@ export const useDataStore = defineStore('data', () => {
 
       products.value = productsRes.data || []
       locations.value = locationsRes.data || []
-      products.value = productsRes.data || []
-      locations.value = locationsRes.data || []
-      // orders.value is now populated by specific page logic
 
       // Setup real-time subscriptions after initial data load
       setupRealtimeSubscriptions()
@@ -100,8 +100,8 @@ export const useDataStore = defineStore('data', () => {
 
             if (data) {
               const newOrder = { ...data, created_at: new Date(data.created_at) } as unknown as Order
-
               // Update main orders list (if not duplicate)
+
               if (!existingInOrders) {
                 orders.value = [newOrder, ...orders.value]
               }
@@ -115,14 +115,26 @@ export const useDataStore = defineStore('data', () => {
             // Update in global orders
             const index = orders.value.findIndex(o => o.id === payload.new.id)
             if (index !== -1) {
-              orders.value[index] = { ...orders.value[index], ...payload.new }
+              // Ensure created_at is a Date object, not a string from JSON payload
+              const updatedOrder = {
+                ...orders.value[index],
+                ...payload.new,
+                created_at: payload.new.created_at ? new Date(payload.new.created_at) : orders.value[index].created_at
+              }
+              orders.value[index] = updatedOrder
             }
 
             // Update in recent user orders
             const recentIndex = recentUserOrders.value.findIndex(o => o.id === payload.new.id)
             if (recentIndex !== -1) {
-              recentUserOrders.value[recentIndex] = { ...recentUserOrders.value[recentIndex], ...payload.new }
+              const updatedRecentOrder = {
+                ...recentUserOrders.value[recentIndex],
+                ...payload.new,
+                created_at: payload.new.created_at ? new Date(payload.new.created_at) : recentUserOrders.value[recentIndex].created_at
+              }
+              recentUserOrders.value[recentIndex] = updatedRecentOrder
             }
+
 
           } else if (payload.eventType === 'DELETE') {
             orders.value = orders.value.filter(o => o.id !== payload.old.id)
@@ -413,50 +425,14 @@ export const useDataStore = defineStore('data', () => {
     today.setHours(0, 0, 0, 0)
 
     try {
-      // 1. Fetch orders without the profiles join to avoid relation errors
-      const { data: ordersData, error: ordersError } = await supabase
+      const { data, error: err } = await supabase
         .from('kwartvoorbier')
-        .select('*, products(*), locations(*), user_id')
+        .select('*, products(*), locations(*), profiles(full_name, avatar_url), user_id')
         .gte('created_at', today.toISOString())
         .order('created_at', { ascending: false })
 
-      if (ordersError) throw ordersError
-
-      if (!ordersData || ordersData.length === 0) {
-        orders.value = []
-        return
-      }
-
-      // 2. Extract unique user IDs from orders
-      const uniqueUserIds = [...new Set(ordersData.map(o => o.user_id).filter(id => id))]
-
-      // 3. Fetch profiles for these users
-      let profilesData: any[] = []
-      if (uniqueUserIds.length > 0) {
-        const { data: profiles, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .in('id', uniqueUserIds)
-
-        if (!profilesError && profiles) {
-          profilesData = profiles
-        } else {
-          console.warn('Could not fetch profiles manually:', profilesError)
-        }
-      }
-
-      // 4. Merge profiles into orders manually
-      const profilesMap = new Map(profilesData.map(p => [p.id, p]))
-
-      orders.value = ordersData.map(o => {
-        const profile = profilesMap.get(o.user_id)
-        return {
-          ...o,
-          created_at: new Date(o.created_at),
-          profiles: profile ? { full_name: profile.full_name, avatar_url: profile.avatar_url } : null
-        }
-      }) as unknown as Order[]
-
+      if (err) throw err
+      orders.value = (data || []).map(o => ({ ...o, created_at: new Date(o.created_at) })) as unknown as Order[]
     } catch (err) {
       console.error('Error fetching todays orders:', err)
     }
